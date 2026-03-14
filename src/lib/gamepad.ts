@@ -1,0 +1,78 @@
+const GAMEPAD_BUTTONS = {
+  A: 0,
+  B: 1,
+  X: 2,
+  Y: 3,
+  LB: 4,
+  RB: 5,
+  LT: 6,
+  RT: 7,
+  SELECT: 8,
+  START: 9,
+  DPAD_UP: 12,
+  DPAD_DOWN: 13,
+  DPAD_LEFT: 14,
+  DPAD_RIGHT: 15,
+} as const
+
+type GamepadButtonHandler = (button: string, pressed: boolean) => void
+
+let animationFrameId: number | null = null
+let buttonHandlers: GamepadButtonHandler[] = []
+let previousButtonStates: boolean[] = []
+
+function pollGamepads() {
+  const gamepads = navigator.getGamepads()
+  const gamepad = gamepads[0]
+
+  if (gamepad) {
+    gamepad.buttons.forEach((button, index) => {
+      const isPressed = button.pressed
+      const wasPressed = previousButtonStates[index] || false
+
+      if (isPressed && !wasPressed) {
+        const buttonName = Object.entries(GAMEPAD_BUTTONS).find(([_, i]) => i === index)?.[0]
+        if (buttonName) {
+          buttonHandlers.forEach(handler => handler(buttonName, true))
+        }
+      }
+
+      previousButtonStates[index] = isPressed
+    })
+  }
+
+  animationFrameId = requestAnimationFrame(pollGamepads)
+}
+
+export function initGamepad(handler: GamepadButtonHandler) {
+  buttonHandlers.push(handler)
+
+  if (!animationFrameId) {
+    animationFrameId = requestAnimationFrame(pollGamepads)
+  }
+
+  const handleConnect = (e: GamepadEvent) => {
+    console.log('[Gamepad] Connected:', e.gamepad.id)
+  }
+
+  const handleDisconnect = (e: GamepadEvent) => {
+    console.log('[Gamepad] Disconnected:', e.gamepad.id)
+  }
+
+  window.addEventListener('gamepadconnected', handleConnect)
+  window.addEventListener('gamepaddisconnected', handleDisconnect)
+
+  return () => {
+    buttonHandlers = buttonHandlers.filter(h => h !== handler)
+    if (buttonHandlers.length === 0 && animationFrameId) {
+      cancelAnimationFrame(animationFrameId)
+      animationFrameId = null
+    }
+    window.removeEventListener('gamepadconnected', handleConnect)
+    window.removeEventListener('gamepaddisconnected', handleDisconnect)
+  }
+}
+
+export function isGamepadConnected(): boolean {
+  return navigator.getGamepads().some(gp => gp !== null)
+}
