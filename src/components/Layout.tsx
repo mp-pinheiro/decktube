@@ -1,7 +1,7 @@
 import { Outlet } from 'react-router-dom'
 import Header from './Header'
 import { InputProvider } from '../contexts/InputProvider'
-import ButtonOverlay from './ButtonOverlay'
+import HelpButton from './HelpButton'
 
 export default function Layout() {
   return (
@@ -13,7 +13,7 @@ export default function Layout() {
             <Outlet />
           </main>
         </div>
-        <ButtonOverlay />
+        <HelpButton />
       </div>
     </InputProvider>
   )

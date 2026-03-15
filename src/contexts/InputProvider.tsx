@@ -1,25 +1,16 @@
-import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react'
+import { useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { initGamepad } from '../lib/gamepad'
 import { initSpatialNav } from '../lib/spatialNav'
-import { InputContext, type ButtonAction, type ButtonConfig } from './InputContext'
+import { InputContext, type ButtonAction } from './InputContext'
 
 interface InputProviderProps {
   children: ReactNode
 }
 
-const DEFAULT_BUTTON_CONFIGS: ButtonConfig[] = [
-  { key: 'Enter', label: 'Select', visible: true },
-  { key: 'Esc', label: 'Back', visible: true },
-  { key: 'C', label: 'Channel', visible: false },
-  { key: 'S', label: 'Search', visible: true },
-  { key: 'Space', label: 'Play', visible: false },
-]
-
 export function InputProvider({ children }: InputProviderProps) {
   const navigate = useNavigate()
   const actionsRef = useRef<Partial<Record<ButtonAction, () => void>>>({})
-  const [buttonConfigs, setButtonConfigs] = useState<ButtonConfig[]>(DEFAULT_BUTTON_CONFIGS)
 
   const focusSearch = useCallback(() => {
     const searchInput = document.querySelector('input[type="text"]') as HTMLElement
@@ -37,47 +28,30 @@ export function InputProvider({ children }: InputProviderProps) {
     }
   }, [navigate])
 
-  const updateButtonConfigs = useCallback((actions: Partial<Record<ButtonAction, () => void>>) => {
-    setButtonConfigs(prev => prev.map(config => {
-      if (config.label === 'Channel') {
-        return { ...config, visible: !!actions.channel }
-      }
-      if (config.label === 'Play') {
-        return { ...config, visible: !!actions.play }
-      }
-      return config
-    }))
-  }, [])
-
   const registerActions = useCallback((actions: Partial<Record<ButtonAction, () => void>>) => {
     actionsRef.current = actions
-    updateButtonConfigs(actions)
-  }, [updateButtonConfigs])
+  }, [])
 
   const unregisterActions = useCallback(() => {
     actionsRef.current = {}
-    updateButtonConfigs({})
-  }, [updateButtonConfigs])
+  }, [])
 
   useEffect(() => {
     const handleKeydown = (e: KeyboardEvent) => {
       const activeEl = document.activeElement as HTMLElement | null
       const isInputFocused = activeEl?.tagName === 'INPUT' || activeEl?.tagName === 'TEXTAREA'
 
-      // Global: S to focus search
       if (!isInputFocused && (e.key === 's' || e.key === 'S')) {
         e.preventDefault()
         focusSearch()
         return
       }
 
-      // Global: Escape to go back
       if (e.key === 'Escape') {
         goBack()
         return
       }
 
-      // Don't process other shortcuts when typing in input
       if (isInputFocused) return
 
       const actions = actionsRef.current
@@ -151,6 +125,19 @@ export function InputProvider({ children }: InputProviderProps) {
             focusSearch()
           }
           break
+        case 'RB':
+          if (actions.play) {
+            actions.play()
+          }
+          break
+        case 'LB':
+          if (actions.fullscreen) {
+            actions.fullscreen()
+          }
+          break
+        case 'SELECT':
+          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'h' }))
+          break
         case 'DPAD_UP':
           window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp' }))
           break
@@ -176,7 +163,7 @@ export function InputProvider({ children }: InputProviderProps) {
   }, [focusSearch, goBack])
 
   return (
-    <InputContext.Provider value={{ registerActions, unregisterActions, buttonConfigs }}>
+    <InputContext.Provider value={{ registerActions, unregisterActions }}>
       {children}
     </InputContext.Provider>
   )

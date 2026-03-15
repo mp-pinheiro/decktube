@@ -35,20 +35,15 @@ ALL FEATURES MUST adhere to the Steam Deck controller UX. You are not building a
 - Trapping focus (e.g. getting stuck in search) is unacceptable; always provide an intuitive escape hatch (e.g., `ArrowDown` to exit search).
 
 - Clean, minimal interface optimized for Steam Deck viewport
-- Keyboard shortcuts:
-  - Space: Play/Pause
-  - Arrow Left/Right: Seek backward/forward 10s
-  - Arrow Up/Down: Volume up/down
-  - F: Fullscreen
-  - S: Focus search input
-  - C: Go to channel (when video focused)
-  - Escape: Back/blur
-- Gamepad support (Steam Deck controller):
-  - D-Pad: Navigate UI / Seek & Volume on watch page
-  - A: Select
-  - B: Back
-  - X: Go to channel
-  - Y: Focus search
+- Controls (every keyboard shortcut has a gamepad equivalent):
+  - Enter / A: Select
+  - Escape / B: Back/blur
+  - C / X: Go to channel
+  - S / Y: Focus search
+  - Space / RB: Play/Pause
+  - F / LB: Fullscreen
+  - Arrows / D-Pad: Navigate UI / Seek & Volume on watch page
+  - H / Select: Open help modal
 - Default video loads on startup
 
 ## Development
