@@ -52,8 +52,11 @@ export default function WatchPage() {
   }, [player, isReady])
 
   const toggleFullscreen = useCallback(() => {
+    const playerContainer = document.getElementById('video-player-container')
+    if (!playerContainer) return
+
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen()
+      playerContainer.requestFullscreen()
     } else {
       document.exitFullscreen()
     }
