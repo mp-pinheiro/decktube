@@ -37,7 +37,7 @@ dist-ssr
 .vscode
 HEAD
 config
-hooks
+/hooks
 objects
 refs
 
