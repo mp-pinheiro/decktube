@@ -81,14 +81,14 @@ export default function LoginPage() {
               <button
                 onClick={handleLogin}
                 disabled={loading}
-                className="w-full py-3 bg-red-600 hover:bg-red-500 disabled:bg-zinc-800 disabled:text-zinc-500 rounded-xl font-bold transition-all hover:scale-[1.02] active:scale-[0.98]"
+                className="w-full py-3 bg-red-600 hover:bg-red-500 disabled:bg-zinc-800 disabled:text-zinc-500 rounded-xl font-bold transition-all hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-red-500"
               >
                 {loading ? 'Loading...' : 'Sign in with YouTube'}
               </button>
 
               <button
                 onClick={handleBack}
-                className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 border border-white/10 rounded-xl text-sm font-medium transition-colors"
+                className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 border border-white/10 rounded-xl text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
               >
                 Back to Home
               </button>
@@ -113,7 +113,7 @@ export default function LoginPage() {
 
               <button
                 onClick={handleCancel}
-                className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 border border-white/10 rounded-xl text-sm font-medium transition-colors"
+                className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 border border-white/10 rounded-xl text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
               >
                 Cancel
               </button>

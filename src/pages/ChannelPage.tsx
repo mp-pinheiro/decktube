@@ -34,6 +34,15 @@ export default function ChannelPage() {
     return () => unregisterActions()
   }, [registerActions, unregisterActions])
 
+  useEffect(() => {
+    if (!loading && videos.length > 0) {
+      requestAnimationFrame(() => {
+        const first = document.querySelector<HTMLElement>('[data-video-id]')
+        first?.focus()
+      })
+    }
+  }, [loading, videos.length])
+
   const formatViewCount = (views: number | undefined): string => {
     if (!views) return ''
     if (views >= 1000000) return `${(views / 1000000).toFixed(1)}M views`
@@ -70,6 +79,7 @@ export default function ChannelPage() {
               <Link
                 key={video.videoId}
                 to={`/watch/${video.videoId}`}
+                data-video-id={video.videoId}
                 className="group flex flex-col gap-2 rounded-xl hover:bg-gray-900 transition-colors p-2 focus:outline-none focus:ring-2 focus:ring-red-600 outline-none"
               >
                 <div className="relative w-full aspect-video bg-gray-800 rounded-lg overflow-hidden">

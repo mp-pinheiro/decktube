@@ -84,6 +84,14 @@ export default function WatchPage() {
   }, [registerActions, unregisterActions, togglePlay, goToChannel, toggleFullscreen])
 
   useEffect(() => {
+    if (isReady) {
+      requestAnimationFrame(() => {
+        document.getElementById('video-player-container')?.focus()
+      })
+    }
+  }, [isReady])
+
+  useEffect(() => {
     const handlePlayerKeydown = (e: KeyboardEvent) => {
       const isInputFocused = document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA'
 
@@ -142,7 +150,7 @@ export default function WatchPage() {
       <div className="flex-1">
         <button
           onClick={() => navigate(-1)}
-          className="mb-4 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-white/10 rounded-xl text-sm font-medium transition-colors"
+          className="mb-4 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-white/10 rounded-xl text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
         >
           ← Back
         </button>

@@ -100,6 +100,15 @@ export default function HomePage() {
     return () => unregisterActions()
   }, [registerActions, unregisterActions, goToChannel])
 
+  useEffect(() => {
+    if (!loading && videos.length > 0) {
+      requestAnimationFrame(() => {
+        const first = document.querySelector<HTMLElement>('[data-video-id]')
+        first?.focus()
+      })
+    }
+  }, [loading, videos.length])
+
   const formatDuration = (seconds: number | undefined): string => {
     if (seconds === undefined || seconds === 0) return ''
     const mins = Math.floor(seconds / 60)
@@ -154,7 +163,7 @@ export default function HomePage() {
                 to={`/watch/${video.videoId}`}
                 data-video-id={video.videoId}
                 data-channel-id={video.channelId}
-                className="block group cursor-pointer flex flex-col gap-3 outline-none focus:outline-none"
+                className="block group cursor-pointer flex flex-col gap-3 outline-none focus:outline-none focus:ring-2 focus:ring-red-500 rounded-2xl"
               >
                   <div className="relative aspect-video overflow-hidden rounded-2xl bg-zinc-800 border border-white/5 shadow-lg">
                     <img
@@ -169,7 +178,6 @@ export default function HomePage() {
                         {formatDuration(video.duration)}
                       </div>
                     )}
-                    <div className="absolute inset-0 rounded-2xl ring-inset ring-2 ring-transparent group-focus:ring-red-500 transition-all" />
                   </div>
 
                   <div className="flex gap-3 px-1">
