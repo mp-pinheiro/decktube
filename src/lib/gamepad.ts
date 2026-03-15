@@ -19,26 +19,33 @@ type GamepadButtonHandler = (button: string, pressed: boolean) => void
 
 let animationFrameId: number | null = null
 let buttonHandlers: GamepadButtonHandler[] = []
-let previousButtonStates: boolean[] = []
+// Per-gamepad state tracking keyed by gamepad index
+const previousButtonStates = new Map<number, boolean[]>()
 
 function pollGamepads() {
   const gamepads = navigator.getGamepads()
-  const gamepad = gamepads[0]
 
-  if (gamepad) {
+  for (let i = 0; i < gamepads.length; i++) {
+    const gamepad = gamepads[i]
+    if (!gamepad) continue
+
+    const prevStates = previousButtonStates.get(i) ?? []
+
     gamepad.buttons.forEach((button, index) => {
       const isPressed = button.pressed
-      const wasPressed = previousButtonStates[index] || false
+      const wasPressed = prevStates[index] || false
 
       if (isPressed && !wasPressed) {
-        const buttonName = Object.entries(GAMEPAD_BUTTONS).find(([_, i]) => i === index)?.[0]
+        const buttonName = Object.entries(GAMEPAD_BUTTONS).find(([_, bi]) => bi === index)?.[0]
         if (buttonName) {
           buttonHandlers.forEach(handler => handler(buttonName, true))
         }
       }
 
-      previousButtonStates[index] = isPressed
+      prevStates[index] = isPressed
     })
+
+    previousButtonStates.set(i, prevStates)
   }
 
   animationFrameId = requestAnimationFrame(pollGamepads)
@@ -52,11 +59,12 @@ export function initGamepad(handler: GamepadButtonHandler) {
   }
 
   const handleConnect = (e: GamepadEvent) => {
-    console.log('[Gamepad] Connected:', e.gamepad.id)
+    console.log('[Gamepad] Connected:', e.gamepad.id, 'at index', e.gamepad.index)
   }
 
   const handleDisconnect = (e: GamepadEvent) => {
-    console.log('[Gamepad] Disconnected:', e.gamepad.id)
+    console.log('[Gamepad] Disconnected:', e.gamepad.id, 'at index', e.gamepad.index)
+    previousButtonStates.delete(e.gamepad.index)
   }
 
   window.addEventListener('gamepadconnected', handleConnect)
@@ -67,6 +75,7 @@ export function initGamepad(handler: GamepadButtonHandler) {
     if (buttonHandlers.length === 0 && animationFrameId) {
       cancelAnimationFrame(animationFrameId)
       animationFrameId = null
+      previousButtonStates.clear()
     }
     window.removeEventListener('gamepadconnected', handleConnect)
     window.removeEventListener('gamepaddisconnected', handleDisconnect)
