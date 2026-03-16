@@ -64,16 +64,18 @@ export function useYouTubePlayer(
   }, [])
 
   useEffect(() => {
-    if (!apiReady || !videoId || !containerRef.current) return
+    if (!apiReady || !videoId || !containerRef.current || !window.YT) return
 
     if (playerRef.current) {
       playerRef.current.loadVideoById(videoId)
       return
     }
 
-    if (!window.YT) return
+    const container = containerRef.current
+    const playerDiv = document.createElement('div')
+    container.appendChild(playerDiv)
 
-    const player = new window.YT.Player(containerRef.current, {
+    const player = new window.YT.Player(playerDiv, {
       height: '100%',
       width: '100%',
       videoId,
@@ -98,6 +100,7 @@ export function useYouTubePlayer(
     return () => {
       playerRef.current?.destroy()
       playerRef.current = null
+      container.innerHTML = ''
       setIsReady(false)
     }
   }, [apiReady, videoId, containerRef])

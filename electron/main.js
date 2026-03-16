@@ -64,7 +64,7 @@ function createProxiedServer() {
 
   return new Promise((resolve) => {
     const httpServer = createServer(srv)
-    httpServer.listen(0, '127.0.0.1', () => {
+    httpServer.listen(19384, '127.0.0.1', () => {
       const { port } = httpServer.address()
       resolve(`http://127.0.0.1:${port}`)
     })
@@ -88,6 +88,16 @@ async function createWindow() {
   })
 
   mainWindow.loadURL(url)
+
+  mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    const currentOrigin = new URL(url).origin
+    const targetOrigin = new URL(navigationUrl).origin
+    if (targetOrigin !== currentOrigin) {
+      event.preventDefault()
+    }
+  })
+
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
 }
 
 app.whenReady().then(async () => {
