@@ -52,6 +52,7 @@
   "build": {
     "appId": "com.decktube.app",
     "productName": "DeckTube",
+    "asar": false,
     "directories": {
       "output": "release"
     },

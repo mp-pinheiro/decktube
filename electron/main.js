@@ -90,10 +90,14 @@ async function createWindow() {
 }
 
 app.whenReady().then(async () => {
-  createWindow()
+  await createWindow()
   if (!isDev) {
-    const { autoUpdater } = await import('electron-updater')
-    autoUpdater.checkForUpdatesAndNotify()
+    try {
+      const { autoUpdater } = await import('electron-updater')
+      autoUpdater.checkForUpdatesAndNotify().catch(() => {})
+    } catch {
+      // updater unavailable, continue
+    }
   }
 })
 
