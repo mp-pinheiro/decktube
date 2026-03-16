@@ -1,7 +1,7 @@
 {
   "name": "yt-deck",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.5.1",
   "type": "module",
   "main": "electron/main.js",
   "scripts": {
@@ -63,7 +63,9 @@
       "target": [
         {
           "target": "AppImage",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ]
     }
