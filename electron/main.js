@@ -1,5 +1,4 @@
 import { app, BrowserWindow } from 'electron'
-import { autoUpdater } from 'electron-updater'
 import { createServer } from 'http'
 import { createProxyMiddleware } from 'http-proxy-middleware'
 import express from 'express'
@@ -90,9 +89,12 @@ async function createWindow() {
   mainWindow.loadURL(url)
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   createWindow()
-  if (!isDev) autoUpdater.checkForUpdatesAndNotify()
+  if (!isDev) {
+    const { autoUpdater } = await import('electron-updater')
+    autoUpdater.checkForUpdatesAndNotify()
+  }
 })
 
 app.on('window-all-closed', () => {
