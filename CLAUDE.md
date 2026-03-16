@@ -1,7 +1,7 @@
 # YOU MUST OBEY
 - DO NOT RUN `npm run dev` or similar. YOU ARE SANDBOXED. ASK TO RUN SERVER.
 
-# YouTube for Steam Deck
+# DeckTube
 
 A web app for watching YouTube videos on Steam Deck with controller/keyboard-friendly controls.
 
