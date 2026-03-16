@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+[data-nav-focus] {
+  outline: 2px solid #ef4444;
+  outline-offset: 2px;
+}
+
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 }

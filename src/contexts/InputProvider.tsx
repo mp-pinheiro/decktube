@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { initGamepad } from '../lib/gamepad'
 import { initSpatialNav } from '../lib/spatialNav'
+import { bootstrapNavFocus, initNavFocusCleanup } from '../lib/focusManager'
 import { InputContext, type ButtonAction } from './InputContext'
 
 interface InputProviderProps {
@@ -97,6 +98,11 @@ export function InputProvider({ children }: InputProviderProps) {
 
     window.addEventListener('keydown', handleKeydown)
 
+    const handleGamepadConnect = () => bootstrapNavFocus()
+    window.addEventListener('gamepadconnected', handleGamepadConnect)
+
+    const cleanupNavFocus = initNavFocusCleanup()
+
     const cleanupGamepad = initGamepad((button, pressed) => {
       if (!pressed) return
 
@@ -106,14 +112,7 @@ export function InputProvider({ children }: InputProviderProps) {
 
       if ((!activeEl || activeEl === document.body) &&
           ['DPAD_UP', 'DPAD_DOWN', 'DPAD_LEFT', 'DPAD_RIGHT', 'A'].includes(button)) {
-        const bootstrapTarget = document.querySelector<HTMLElement>(
-          '[data-video-id], #video-player-container, main button:not([disabled]), main a[href]:not([tabindex="-1"])'
-        )
-        if (bootstrapTarget) {
-          bootstrapTarget.focus()
-          bootstrapTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-          return
-        }
+        if (bootstrapNavFocus()) return
       }
 
       switch (button) {
@@ -169,6 +168,8 @@ export function InputProvider({ children }: InputProviderProps) {
 
     return () => {
       window.removeEventListener('keydown', handleKeydown)
+      window.removeEventListener('gamepadconnected', handleGamepadConnect)
+      cleanupNavFocus()
       cleanupGamepad()
       cleanupSpatialNav()
     }
