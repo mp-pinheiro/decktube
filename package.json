@@ -59,6 +59,10 @@
       "electron/**/*",
       "package.json"
     ],
+    "publish": {
+      "provider": "github",
+      "releaseType": "release"
+    },
     "linux": {
       "target": [
         {
