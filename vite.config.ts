@@ -16,7 +16,7 @@ export default defineConfig({
         description: 'YouTube for Steam Deck',
         theme_color: '#09090b',
         start_url: '/',
-        display: 'fullscreen',
+        display: 'standalone',
         orientation: 'landscape',
         icons: [
           { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },

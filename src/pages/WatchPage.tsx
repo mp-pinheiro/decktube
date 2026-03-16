@@ -62,6 +62,15 @@ export default function WatchPage() {
     }
   }, [])
 
+  // Exit fullscreen on unmount to avoid leaving Gamescope in a broken state
+  useEffect(() => {
+    return () => {
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {})
+      }
+    }
+  }, [])
+
   const goToChannel = useCallback(() => {
     if (videoData?.channelId) {
       navigate(`/channel/${videoData.channelId}`)
