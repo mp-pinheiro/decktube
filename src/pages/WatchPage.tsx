@@ -114,12 +114,6 @@ export default function WatchPage() {
           e.preventDefault()
           setVolume(Math.max(0, volume - 10))
           break
-        case 'Escape':
-          e.preventDefault()
-          if (document.activeElement instanceof HTMLElement) {
-            document.activeElement.blur()
-          }
-          break
       }
     }
 

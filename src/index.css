@@ -5,6 +5,10 @@
   outline-offset: 2px;
 }
 
+[data-nav-focus]:focus {
+  box-shadow: none !important;
+}
+
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 }
