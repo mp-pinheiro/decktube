@@ -52,12 +52,15 @@ export default function Header() {
 
       <div className="flex items-center gap-3">
         {authenticated ? (
-          <button
-            onClick={handleLogout}
-            className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-white/10 rounded-full text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
-          >
-            Sign out
-          </button>
+          <>
+            <span className="text-xs text-zinc-600 select-none">v0.2</span>
+            <button
+              onClick={handleLogout}
+              className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-white/10 rounded-full text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
+            >
+              Sign out
+            </button>
+          </>
         ) : (
           <Link
             to={routes.login}
