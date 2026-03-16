@@ -12,7 +12,7 @@ exports.default = async function (context) {
   renameSync(execPath, binPath)
   writeFileSync(
     execPath,
-    `#!/bin/bash\nHERE="$(dirname "$(readlink -f "$0")")"\nexec "$HERE/${execName}.bin" --no-sandbox --disable-dev-shm-usage "$@"\n`
+    `#!/bin/bash\nunset LD_PRELOAD\nunset LD_LIBRARY_PATH\nHERE="$(dirname "$(readlink -f "$0")")"\nexec "$HERE/${execName}.bin" --no-sandbox "$@"\n`
   )
   chmodSync(execPath, 0o755)
 }

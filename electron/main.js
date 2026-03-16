@@ -1,6 +1,5 @@
 import { app, BrowserWindow } from 'electron'
 
-app.commandLine.appendSwitch('no-sandbox')
 import { createServer } from 'http'
 import { createProxyMiddleware } from 'http-proxy-middleware'
 import express from 'express'
