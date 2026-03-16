@@ -23,6 +23,28 @@ export function bootstrapNavFocus(): boolean {
   return true
 }
 
+export function waitForBootstrap(): () => void {
+  if (bootstrapNavFocus()) return () => {}
+
+  let rafId: number
+  const observer = new MutationObserver(() => {
+    cancelAnimationFrame(rafId)
+    rafId = requestAnimationFrame(() => {
+      if (bootstrapNavFocus()) observer.disconnect()
+    })
+  })
+
+  observer.observe(document.body, { childList: true, subtree: true })
+
+  const timeout = setTimeout(() => observer.disconnect(), 10_000)
+
+  return () => {
+    cancelAnimationFrame(rafId)
+    clearTimeout(timeout)
+    observer.disconnect()
+  }
+}
+
 export function initNavFocusCleanup() {
   const clearOnPointer = () => clearNavFocus()
 

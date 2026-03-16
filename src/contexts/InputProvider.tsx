@@ -1,8 +1,8 @@
 import { useEffect, useRef, useCallback, type ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { initGamepad } from '../lib/gamepad'
 import { initSpatialNav } from '../lib/spatialNav'
-import { bootstrapNavFocus, initNavFocusCleanup } from '../lib/focusManager'
+import { bootstrapNavFocus, waitForBootstrap, initNavFocusCleanup } from '../lib/focusManager'
 import { InputContext, type ButtonAction } from './InputContext'
 
 interface InputProviderProps {
@@ -174,6 +174,30 @@ export function InputProvider({ children }: InputProviderProps) {
       cleanupSpatialNav()
     }
   }, [focusSearch, goBack])
+
+  const location = useLocation()
+
+  useEffect(() => {
+    return waitForBootstrap()
+  }, [location.pathname])
+
+  useEffect(() => {
+    const handleFocusBack = () => {
+      if (!document.activeElement || document.activeElement === document.body) {
+        bootstrapNavFocus()
+      }
+    }
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') handleFocusBack()
+    }
+
+    window.addEventListener('focus', handleFocusBack)
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => {
+      window.removeEventListener('focus', handleFocusBack)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [])
 
   return (
     <InputContext.Provider value={{ registerActions, unregisterActions }}>
