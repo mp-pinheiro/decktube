@@ -28,13 +28,9 @@ jobs:
 
       - run: npm ci
 
-      - name: Build AppImage
+      - name: Build and publish AppImage
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_YOUTUBE_CLIENT_ID: ${{ secrets.VITE_YOUTUBE_CLIENT_ID }}
           VITE_YOUTUBE_CLIENT_SECRET: ${{ secrets.VITE_YOUTUBE_CLIENT_SECRET }}
         run: npm run build:electron
-
-      - name: Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: release/*.AppImage
