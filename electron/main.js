@@ -1,7 +1,8 @@
 import { app, BrowserWindow } from 'electron'
 
 app.commandLine.appendSwitch('no-sandbox')
-app.disableHardwareAcceleration()
+app.commandLine.appendSwitch('ozone-platform', 'wayland')
+app.commandLine.appendSwitch('enable-features', 'UseOzonePlatform,WaylandWindowDecorations')
 import { createServer } from 'http'
 import { createProxyMiddleware } from 'http-proxy-middleware'
 import express from 'express'
