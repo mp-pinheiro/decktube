@@ -44,6 +44,8 @@ refs
 # secrets
 .env
 
+release/
+
 # data and other stuff
 repos
 data
