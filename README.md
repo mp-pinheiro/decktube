@@ -10,7 +10,7 @@ YouTube viewer for Steam Deck, optimized for controller and keyboard input.
 - Video search, watch page, and channel browsing
 - Full Steam Deck gamepad support
 - Keyboard shortcuts for all actions
-- PWA support (fullscreen, landscape lock)
+- Electron app (standalone, no browser needed)
 - Infinite scroll on home and search results
 
 ## Controls
@@ -29,7 +29,7 @@ YouTube viewer for Steam Deck, optimized for controller and keyboard input.
 
 ## Tech Stack
 
-- React 19, Vite 7, TypeScript
+- Electron 41, React 19, Vite 7, TypeScript
 - Tailwind CSS 4
 - React Router v7
 - YouTube InnerTube API
@@ -57,64 +57,50 @@ VITE_YOUTUBE_CLIENT_SECRET=your_client_secret
 
 > Credentials are embedded into the build at build time, not loaded at runtime.
 
-## Deployment
-
-### Option A: Docker + Caddy (recommended for local/LAN)
+## Steam Deck Setup
 
 ```bash
 cp .env.example .env
-# Edit .env with your credentials
+npm install
+npm run build:electron
+```
+
+Transfer `release/DeckTube-*.AppImage` to the Steam Deck, add as a non-Steam game in Desktop Mode, and launch from Gaming Mode.
+
+## Web Deployment (alternative)
+
+The app can also be deployed as a web server for access from any browser.
+
+### Docker + Caddy
+
+```bash
+cp .env.example .env
 docker compose up -d
 ```
 
-The app runs on port 443 with HTTPS via Caddy using a self-signed certificate (suitable for LAN use).
+Runs on port 443 with HTTPS via Caddy (self-signed cert, suitable for LAN). To use a custom domain, edit `Caddyfile` and replace `:443` with your hostname.
 
-HTTPS is required — PWA features (service worker, fullscreen lock, standalone launch mode) are restricted to secure contexts by the browser. Without it, the app loads as a plain webpage when launched from Steam as a non-Steam game.
-
-To use a custom domain or IP, edit `Caddyfile` and replace `:443` with your hostname:
-
-```
-your-hostname.local {
-  tls internal
-  reverse_proxy yt-deck:3000
-}
-```
-
-### Option B: Cloudflare Workers
+### Cloudflare Workers
 
 ```bash
 cp .env.example .env
-# Edit .env with your credentials
 npm run build
 npx wrangler deploy
 ```
 
-Update the `routes` pattern in `wrangler.toml` to your Cloudflare domain before deploying (currently set to `decktube.fairfruit.tv`).
-
-## Steam Deck Setup
-
-After the server is running, do this once from the Steam Deck to install DeckTube as a game:
-
-1. **Switch to Desktop Mode** — hold Power → Switch to Desktop
-2. **Open Chromium** and navigate to `https://<your-server-ip>`
-3. **Trust the certificate** — Chromium will warn about the self-signed cert; click Advanced → Proceed
-4. **Install the PWA** — click the install icon in the address bar (or menu → Install DeckTube)
-5. **Add to Steam** — open Steam in Desktop Mode → Games → Add a Non-Steam Game → select DeckTube
-6. **Return to Game Mode** — DeckTube will appear in your library and launch fullscreen
-
-> If you want to skip the certificate warning permanently, export Caddy's root CA (`caddy trust` or copy from `~/.local/share/caddy/pki/authorities/local/root.crt`) and import it into Chromium's certificate store under Settings → Privacy and Security → Manage Certificates.
+Update the `routes` pattern in `wrangler.toml` to your Cloudflare domain before deploying.
 
 ## Development
 
 ```bash
 cp .env.example .env
-# Fill in credentials
 npm install
-npm run dev  # http://localhost:5173
+npm run dev:electron  # Electron + Vite hot reload
+npm run dev           # browser only at http://localhost:5173
 ```
 
 ## Architecture Notes
 
-- **OAuth device flow:** the user enters a short code on a second device (phone/desktop) to authenticate — no redirect URI needed, which makes it suitable for TV/console environments
+- **OAuth device flow:** the user enters a short code on a second device (phone/desktop) to authenticate — no redirect URI needed, suitable for TV/console environments
 - **YouTube InnerTube API:** used instead of the official Data API to avoid quota restrictions
-- **CORS proxy:** all YouTube API requests are routed through the app server to handle cross-origin restrictions
+- **CORS proxy:** all YouTube API requests are routed through the Electron main process (prod) or Vite dev server (dev) to handle cross-origin restrictions
