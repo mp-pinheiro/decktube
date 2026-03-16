@@ -8,7 +8,6 @@ export function initSpatialNav() {
 
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return
 
-    // When body is active, use the data-nav-focus element as origin if available
     let currentEl: HTMLElement | null = null
     if (!activeEl || activeEl === document.body) {
       currentEl = document.querySelector<HTMLElement>('[data-nav-focus]')

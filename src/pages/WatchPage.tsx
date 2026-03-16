@@ -62,7 +62,6 @@ export default function WatchPage() {
     }
   }, [])
 
-  // Exit fullscreen on unmount to avoid leaving Gamescope in a broken state
   useEffect(() => {
     return () => {
       if (document.fullscreenElement) {

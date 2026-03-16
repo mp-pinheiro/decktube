@@ -26,7 +26,16 @@ export default {
       return proxy(request, 'https://www.googleapis.com/oauth2/v4/token', 'https://www.googleapis.com')
     }
 
-    return env.ASSETS.fetch(request)
+    const response = await env.ASSETS.fetch(request)
+
+    const filename = url.pathname.split('/').pop() ?? ''
+    if (filename === 'sw.js' || filename.startsWith('workbox-')) {
+      const headers = new Headers(response.headers)
+      headers.set('Cache-Control', 'no-cache, no-store, must-revalidate')
+      return new Response(response.body, { status: response.status, headers })
+    }
+
+    return response
   },
 }
 

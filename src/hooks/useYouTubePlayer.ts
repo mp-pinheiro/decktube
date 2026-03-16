@@ -47,27 +47,22 @@ export function useYouTubePlayer(
   const [isPlaying, setIsPlaying] = useState(false)
   const playerRef = useRef<YouTubePlayer | null>(null)
 
-  // Load YouTube API and wait for it to be ready
   useEffect(() => {
-    // Always set up the callback FIRST
     window.onYouTubeIframeAPIReady = () => {
       setApiReady(true)
     }
 
     if (window.YT) {
-      // API already loaded - use ready() callback
       window.YT.ready(() => setApiReady(true))
       return
     }
 
-    // API not loaded - load script
     const tag = document.createElement('script')
     tag.src = 'https://www.youtube.com/iframe_api'
     const firstScriptTag = document.getElementsByTagName('script')[0]
     firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag)
   }, [])
 
-  // Create/update player only when API is ready
   useEffect(() => {
     if (!apiReady || !videoId || !containerRef.current) return
 
