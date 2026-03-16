@@ -8,16 +8,23 @@ export function initSpatialNav() {
 
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return
 
+    // When body is active, use the data-nav-focus element as origin if available
+    let currentEl: HTMLElement | null = null
     if (!activeEl || activeEl === document.body) {
-      if (bootstrapNavFocus()) e.preventDefault()
-      return
+      currentEl = document.querySelector<HTMLElement>('[data-nav-focus]')
+      if (!currentEl) {
+        if (bootstrapNavFocus()) e.preventDefault()
+        return
+      }
+    } else {
+      currentEl = activeEl
     }
 
-    let currentRect = activeEl.getBoundingClientRect()
+    let currentRect = currentEl.getBoundingClientRect()
 
     if (isInputFocused) {
       if (e.key === 'ArrowDown') {
-        activeEl.blur()
+        activeEl!.blur()
       } else {
         return
       }
@@ -38,7 +45,7 @@ export function initSpatialNav() {
     let minDistance = Infinity
 
     for (const el of focusables) {
-      if (el === activeEl) continue
+      if (el === currentEl) continue
       const rect = el.getBoundingClientRect()
       let dx = 0, dy = 0
       let valid = false
