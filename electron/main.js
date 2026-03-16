@@ -1,4 +1,5 @@
 import { app, BrowserWindow } from 'electron'
+import { autoUpdater } from 'electron-updater'
 import { createServer } from 'http'
 import { createProxyMiddleware } from 'http-proxy-middleware'
 import express from 'express'
@@ -89,7 +90,10 @@ async function createWindow() {
   mainWindow.loadURL(url)
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  createWindow()
+  if (!isDev) autoUpdater.checkForUpdatesAndNotify()
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
