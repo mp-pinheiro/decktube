@@ -67,29 +67,6 @@ npm run build:electron
 
 Transfer `release/DeckTube-*.AppImage` to the Steam Deck, add as a non-Steam game in Desktop Mode, and launch from Gaming Mode.
 
-## Web Deployment (alternative)
-
-The app can also be deployed as a web server for access from any browser.
-
-### Docker + Caddy
-
-```bash
-cp .env.example .env
-docker compose up -d
-```
-
-Runs on port 443 with HTTPS via Caddy (self-signed cert, suitable for LAN). To use a custom domain, edit `Caddyfile` and replace `:443` with your hostname.
-
-### Cloudflare Workers
-
-```bash
-cp .env.example .env
-npm run build
-npx wrangler deploy
-```
-
-Update the `routes` pattern in `wrangler.toml` to your Cloudflare domain before deploying.
-
 ## Development
 
 ```bash

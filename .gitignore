@@ -43,6 +43,7 @@ refs
 
 # secrets
 .env
+.deck
 
 release/
 
