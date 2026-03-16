@@ -53,6 +53,7 @@
     "appId": "com.decktube.app",
     "productName": "DeckTube",
     "asar": false,
+    "afterPack": "./afterPack.cjs",
     "directories": {
       "output": "release"
     },
