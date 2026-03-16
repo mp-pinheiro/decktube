@@ -84,14 +84,6 @@ export default function WatchPage() {
   }, [registerActions, unregisterActions, togglePlay, goToChannel, toggleFullscreen])
 
   useEffect(() => {
-    if (isReady) {
-      requestAnimationFrame(() => {
-        document.getElementById('video-player-container')?.focus()
-      })
-    }
-  }, [isReady])
-
-  useEffect(() => {
     const handlePlayerKeydown = (e: KeyboardEvent) => {
       const isInputFocused = document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA'
 

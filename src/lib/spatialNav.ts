@@ -6,6 +6,18 @@ export function initSpatialNav() {
 
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
 
+    if (!activeEl || activeEl === document.body) {
+      const bootstrapTarget = document.querySelector<HTMLElement>(
+        '[data-video-id], #video-player-container, main button:not([disabled]), main a[href]:not([tabindex="-1"])'
+      );
+      if (bootstrapTarget) {
+        e.preventDefault();
+        bootstrapTarget.focus();
+        bootstrapTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        return;
+      }
+    }
+
     let currentRect = activeEl && activeEl !== document.body
       ? activeEl.getBoundingClientRect()
       : { left: 0, top: 0, right: window.innerWidth, bottom: 0, width: window.innerWidth, height: 0 };

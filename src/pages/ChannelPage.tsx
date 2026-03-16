@@ -34,15 +34,6 @@ export default function ChannelPage() {
     return () => unregisterActions()
   }, [registerActions, unregisterActions])
 
-  useEffect(() => {
-    if (!loading && videos.length > 0) {
-      requestAnimationFrame(() => {
-        const first = document.querySelector<HTMLElement>('[data-video-id]')
-        first?.focus()
-      })
-    }
-  }, [loading, videos.length])
-
   const formatViewCount = (views: number | undefined): string => {
     if (!views) return ''
     if (views >= 1000000) return `${(views / 1000000).toFixed(1)}M views`

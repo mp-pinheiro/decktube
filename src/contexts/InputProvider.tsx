@@ -104,6 +104,18 @@ export function InputProvider({ children }: InputProviderProps) {
       const isInputFocused = activeEl?.tagName === 'INPUT' || activeEl?.tagName === 'TEXTAREA'
       const actions = actionsRef.current
 
+      if ((!activeEl || activeEl === document.body) &&
+          ['DPAD_UP', 'DPAD_DOWN', 'DPAD_LEFT', 'DPAD_RIGHT', 'A'].includes(button)) {
+        const bootstrapTarget = document.querySelector<HTMLElement>(
+          '[data-video-id], #video-player-container, main button:not([disabled]), main a[href]:not([tabindex="-1"])'
+        )
+        if (bootstrapTarget) {
+          bootstrapTarget.focus()
+          bootstrapTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+          return
+        }
+      }
+
       switch (button) {
         case 'A':
           if (actions.select) {

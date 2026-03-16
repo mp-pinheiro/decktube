@@ -46,15 +46,6 @@ export default function SearchPage() {
     return () => unregisterActions()
   }, [registerActions, unregisterActions, goToChannel])
 
-  useEffect(() => {
-    if (!loading && results.length > 0) {
-      requestAnimationFrame(() => {
-        const first = document.querySelector<HTMLElement>('[data-video-id]')
-        first?.focus()
-      })
-    }
-  }, [loading, results.length])
-
   const formatViewCount = (views: number | undefined): string => {
     if (!views) return ''
     if (views >= 1000000) return `${(views / 1000000).toFixed(1)}M views`

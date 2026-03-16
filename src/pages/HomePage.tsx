@@ -100,15 +100,6 @@ export default function HomePage() {
     return () => unregisterActions()
   }, [registerActions, unregisterActions, goToChannel])
 
-  useEffect(() => {
-    if (!loading && videos.length > 0) {
-      requestAnimationFrame(() => {
-        const first = document.querySelector<HTMLElement>('[data-video-id]')
-        first?.focus()
-      })
-    }
-  }, [loading, videos.length])
-
   const formatDuration = (seconds: number | undefined): string => {
     if (seconds === undefined || seconds === 0) return ''
     const mins = Math.floor(seconds / 60)
