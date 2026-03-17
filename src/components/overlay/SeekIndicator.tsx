@@ -8,6 +8,7 @@ interface SeekIndicatorProps {
   seekDelta: number
   videoEl: HTMLVideoElement | null
   dashPlayer: MediaPlayerClass | null
+  paused: boolean
 }
 
 function formatTime(seconds: number): string {
@@ -20,8 +21,9 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-export default function SeekIndicator({ trigger, seekDelta, videoEl, dashPlayer }: SeekIndicatorProps) {
-  const expanded = useAutoFade(trigger, 2500)
+export default function SeekIndicator({ trigger, seekDelta, videoEl, dashPlayer, paused }: SeekIndicatorProps) {
+  const seekActive = useAutoFade(trigger, 2500)
+  const expanded = seekActive || paused
   const [progress, setProgress] = useState(0)
   const [buffered, setBuffered] = useState(0)
   const [currentTime, setCurrentTime] = useState(0)
@@ -66,7 +68,7 @@ export default function SeekIndicator({ trigger, seekDelta, videoEl, dashPlayer 
       <AnimatePresence>
         {expanded && (
           <motion.div
-            key={trigger}
+            key={seekActive ? trigger : 'paused'}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -76,9 +78,11 @@ export default function SeekIndicator({ trigger, seekDelta, videoEl, dashPlayer 
             <span className="bg-black/70 backdrop-blur-sm rounded px-2 py-0.5 text-sm text-white font-medium tabular-nums">
               {formatTime(currentTime)} / {formatTime(duration)}
             </span>
-            <span className="bg-black/70 backdrop-blur-sm rounded px-2 py-0.5 text-sm text-white/80 font-medium">
-              {deltaLabel}
-            </span>
+            {seekActive && (
+              <span className="bg-black/70 backdrop-blur-sm rounded px-2 py-0.5 text-sm text-white/80 font-medium">
+                {deltaLabel}
+              </span>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
