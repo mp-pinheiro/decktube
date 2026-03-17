@@ -366,12 +366,6 @@ export default function WatchPage() {
           )}
         </div>
         <div className="shrink-0 flex items-center gap-2">
-          <button
-            onClick={() => navigate(-1)}
-            className="h-9 px-4 bg-zinc-900/90 backdrop-blur-md hover:bg-zinc-800 border border-white/10 rounded-xl text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
-          >
-            ← Back
-          </button>
           <HelpButton inline />
         </div>
       </div>
