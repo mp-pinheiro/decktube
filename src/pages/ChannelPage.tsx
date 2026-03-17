@@ -71,21 +71,21 @@ export default function ChannelPage() {
         </div>
       ) : (
         <>
-          <div className="mb-6 flex items-center justify-between border-b border-gray-800 pb-4">
+          <div className="mb-8 flex items-center justify-between border-b border-zinc-800 pb-4">
             <h1 className="text-2xl font-bold">
               {videos.length > 0 && videos[0].channelName ? videos[0].channelName : 'Channel'}
             </h1>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-3 gap-x-6 gap-y-10">
             {videos.map((video) => (
               <Link
                 key={video.videoId}
                 to={`/watch/${video.videoId}`}
                 data-video-id={video.videoId}
-                className="group flex flex-col gap-2 rounded-xl hover:bg-gray-900 transition-colors p-2 focus:outline-none focus:ring-2 focus:ring-red-600 outline-none"
+                className="group flex flex-col gap-3 rounded-2xl focus:outline-none focus:ring-2 focus:ring-red-500 outline-none"
               >
-                <div className="relative w-full aspect-video bg-gray-800 rounded-lg overflow-hidden">
+                <div className="relative w-full aspect-video bg-zinc-800 rounded-2xl overflow-hidden border border-white/5 shadow-lg">
                   <img
                     src={getThumbnailUrl(video)}
                     alt={video.title}
@@ -94,16 +94,16 @@ export default function ChannelPage() {
                   />
                 </div>
 
-                <div className="flex flex-col py-1">
-                  <h3 className="text-sm font-medium line-clamp-2 text-white group-hover:text-red-500 transition-colors">
+                <div className="flex flex-col gap-1 px-1">
+                  <h3 className="text-sm font-semibold line-clamp-2 text-zinc-100 leading-snug group-hover:text-blue-400 transition-colors">
                     {video.title}
                   </h3>
 
-                  <div className="mt-1 flex items-center gap-2 text-xs text-gray-400">
+                  <div className="flex items-center gap-1 text-xs text-zinc-400">
                     <span>{formatViewCount(video.viewCount)}</span>
                     {video.publishedTimeText && (
                       <>
-                        <span>•</span>
+                        <span className="text-[8px] opacity-50">•</span>
                         <span>{video.publishedTimeText}</span>
                       </>
                     )}

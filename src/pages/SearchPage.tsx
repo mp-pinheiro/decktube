@@ -106,12 +106,14 @@ export default function SearchPage() {
                 />
               </div>
 
-              <div className="flex flex-col py-1">
-                <h3 className="text-lg font-medium line-clamp-2 text-zinc-100 group-hover:text-blue-400 transition-colors">
+              <div className="flex flex-col py-1 gap-1">
+                <h3 className="text-lg font-semibold line-clamp-2 text-zinc-100 group-hover:text-blue-400 transition-colors leading-snug">
                   {video.title}
                 </h3>
 
-                <div className="mt-1 flex items-center gap-2 text-sm text-zinc-400">
+                <span className="text-sm font-medium text-zinc-300">{video.channelName}</span>
+
+                <div className="flex items-center gap-2 text-sm text-zinc-400">
                   <span>{formatViewCount(video.viewCount)}</span>
                   {video.publishedTimeText && (
                     <>
@@ -121,12 +123,8 @@ export default function SearchPage() {
                   )}
                 </div>
 
-                <div className="mt-3 flex items-center gap-2">
-                  <span className="text-sm font-medium text-zinc-300">{video.channelName}</span>
-                </div>
-
                 {video.description && (
-                  <p className="mt-3 text-sm text-zinc-500 line-clamp-2">{video.description}</p>
+                  <p className="mt-2 text-sm text-zinc-500 line-clamp-2">{video.description}</p>
                 )}
               </div>
             </Link>
