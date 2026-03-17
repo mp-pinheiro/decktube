@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useState, useEffect, useCallback } from 'react'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { getChannelVideos, type YouTubeVideo } from '../lib/youtube'
 import { useInputContext } from '../contexts/InputProvider'
 
@@ -8,6 +8,7 @@ export default function ChannelPage() {
   const [videos, setVideos] = useState<YouTubeVideo[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const navigate = useNavigate()
   const { registerActions, unregisterActions } = useInputContext()
 
   useEffect(() => {
@@ -29,10 +30,21 @@ export default function ChannelPage() {
     loadChannel()
   }, [channelId])
 
+  const goToVideo = useCallback(() => {
+    const activeEl = document.activeElement
+    const videoCard = activeEl?.closest('[data-video-id]')
+    const videoId = videoCard?.getAttribute('data-video-id')
+    if (videoId) {
+      navigate(`/watch/${videoId}`)
+    }
+  }, [navigate])
+
   useEffect(() => {
-    registerActions({})
+    registerActions({
+      select: goToVideo,
+    })
     return () => unregisterActions()
-  }, [registerActions, unregisterActions])
+  }, [registerActions, unregisterActions, goToVideo])
 
   const formatViewCount = (views: number | undefined): string => {
     if (!views) return ''

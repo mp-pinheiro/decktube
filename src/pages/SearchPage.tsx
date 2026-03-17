@@ -30,6 +30,15 @@ export default function SearchPage() {
     doSearch()
   }, [query])
 
+  const goToVideo = useCallback(() => {
+    const activeEl = document.activeElement
+    const resultCard = activeEl?.closest('[data-video-id]')
+    const videoId = resultCard?.getAttribute('data-video-id')
+    if (videoId) {
+      navigate(`/watch/${videoId}`)
+    }
+  }, [navigate])
+
   const goToChannel = useCallback(() => {
     const activeEl = document.activeElement
     const resultCard = activeEl?.closest('[data-channel-id]')
@@ -41,10 +50,11 @@ export default function SearchPage() {
 
   useEffect(() => {
     registerActions({
+      select: goToVideo,
       channel: goToChannel,
     })
     return () => unregisterActions()
-  }, [registerActions, unregisterActions, goToChannel])
+  }, [registerActions, unregisterActions, goToVideo, goToChannel])
 
   const formatViewCount = (views: number | undefined): string => {
     if (!views) return ''

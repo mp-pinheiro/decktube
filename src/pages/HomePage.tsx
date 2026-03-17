@@ -84,6 +84,15 @@ export default function HomePage() {
     return () => observer.disconnect()
   }, [])
 
+  const goToVideo = useCallback(() => {
+    const activeEl = document.activeElement
+    const videoCard = activeEl?.closest('[data-video-id]')
+    const videoId = videoCard?.getAttribute('data-video-id')
+    if (videoId) {
+      navigate(`/watch/${videoId}`)
+    }
+  }, [navigate])
+
   const goToChannel = useCallback(() => {
     const activeEl = document.activeElement
     const videoCard = activeEl?.closest('[data-video-id]')
@@ -95,10 +104,11 @@ export default function HomePage() {
 
   useEffect(() => {
     registerActions({
+      select: goToVideo,
       channel: goToChannel,
     })
     return () => unregisterActions()
-  }, [registerActions, unregisterActions, goToChannel])
+  }, [registerActions, unregisterActions, goToVideo, goToChannel])
 
   const formatDuration = (seconds: number | undefined): string => {
     if (seconds === undefined || seconds === 0) return ''
