@@ -54,6 +54,7 @@ export function InputProvider({ children }: InputProviderProps) {
       }
 
       if (e.key === 'Escape') {
+        e.preventDefault()
         if (Date.now() - lastGamepadActionRef.current < 100) return
         goBack()
         return
@@ -91,15 +92,16 @@ export function InputProvider({ children }: InputProviderProps) {
             actions.next()
           }
           break
-        case 'Enter':
+        case 'Enter': {
+          e.preventDefault()
           if (Date.now() - lastGamepadActionRef.current < 100) break
           if (actions.select) {
-            e.preventDefault()
             actions.select()
           } else {
             activeEl?.click()
           }
           break
+        }
       }
     }
 
