@@ -18,7 +18,7 @@ function buildQualityOptions(representations: Representation[]): QualityOption[]
     if (rep.height <= 0) continue
     const label = heightToLabel(rep.height)
     if (options.some(o => o.label === label)) continue
-    options.push({ label, value: String(rep.height) })
+    options.push({ label, value: String(rep.id) })
   }
   return options
 }
@@ -194,17 +194,11 @@ export default function WatchPage() {
         setQualityAction(c => c + 1)
       }
     } else {
-      const height = parseInt(value, 10)
-      if (isNaN(height) || !dashPlayerRef.current) return
-
-      const reps = dashPlayerRef.current.getRepresentationsByType('video')
-      const rep = reps?.find(r => r.height === height)
-      if (rep) {
-        dashPlayerRef.current.updateSettings({ streaming: { abr: { autoSwitchBitrate: { video: false } } } })
-        dashPlayerRef.current.setRepresentationForTypeByIndex('video', rep.index)
-        setCurrentQuality(value)
-        setQualityAction(c => c + 1)
-      }
+      if (!dashPlayerRef.current) return
+      dashPlayerRef.current.updateSettings({ streaming: { abr: { autoSwitchBitrate: { video: false } } } })
+      dashPlayerRef.current.setRepresentationForTypeById('video', value, true)
+      setCurrentQuality(value)
+      setQualityAction(c => c + 1)
     }
   }, [])
 

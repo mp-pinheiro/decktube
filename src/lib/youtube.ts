@@ -627,6 +627,7 @@ export function generateMpd(formats: AdaptiveFormat[]): string {
   const groups = new Map<string, AdaptiveFormat[]>()
   for (const f of formats) {
     if (!f.url) continue
+    if (!f.indexRange || !f.initRange) continue
     const baseMime = f.mimeType.split(';')[0].trim()
     if (!groups.has(baseMime)) groups.set(baseMime, [])
     groups.get(baseMime)!.push(f)
