@@ -296,89 +296,86 @@ export default function WatchPage() {
     : dashQualities.find(q => q.value === currentQuality)?.label || ''
 
   return (
-    <div className="flex gap-6">
-      <div className="flex-1">
+    <div className="flex flex-col h-[calc(100vh-8rem)]">
+      <div
+        id="video-player-container"
+        tabIndex={0}
+        className={`bg-black overflow-hidden relative focus:outline-none transition-shadow ${
+          isFullscreen
+            ? 'w-full h-full cursor-none'
+            : 'flex-1 min-h-0 rounded-2xl border border-white/5 focus:ring-4 focus:ring-red-600'
+        }`}
+      >
+        <video
+          ref={videoElRef}
+          className="w-full h-full object-contain"
+        />
+        <PlayerOverlay
+          playAction={playAction}
+          paused={paused}
+          seekAction={seekAction}
+          seekDelta={seekDelta}
+          volumeAction={volumeAction}
+          volume={volume}
+          qualityAction={qualityAction}
+          qualityLabel={qualityLabel}
+          videoEl={videoElRef.current}
+          dashPlayer={dashPlayerRef.current}
+        />
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center text-zinc-400">
+            Loading player...
+          </div>
+        )}
+        {error && (
+          <div className="absolute inset-0 flex items-center justify-center text-red-400">
+            {error}
+          </div>
+        )}
+        <QualitySelector
+          open={qualityMenuOpen}
+          onClose={() => setQualityMenuOpen(false)}
+          qualities={dashQualities.length > 0 ? dashQualities : [{ label: 'Auto', value: 'auto' }]}
+          currentQuality={currentQuality}
+          onSelectQuality={handleSelectQuality}
+        />
+      </div>
+
+      <div className="shrink-0 mt-2 flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          {videoData && (
+            <>
+              <h1 className="text-lg leading-tight font-semibold text-zinc-100 line-clamp-1">{videoData.title}</h1>
+              <div className="flex items-center gap-2 mt-1">
+                {videoData.channelId ? (
+                  <Link to={`/channel/${videoData.channelId}`} className="text-zinc-400 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-red-600 rounded">
+                    {videoData.channelName}
+                  </Link>
+                ) : (
+                  <span className="text-zinc-400">{videoData.channelName}</span>
+                )}
+                {videoData.viewCount !== undefined && (
+                  <>
+                    <span className="text-zinc-600">•</span>
+                    <span className="text-zinc-400">{formatViews(videoData.viewCount)}</span>
+                  </>
+                )}
+                {videoData.publishedTimeText && (
+                  <>
+                    <span className="text-zinc-600">•</span>
+                    <span className="text-zinc-400">{videoData.publishedTimeText}</span>
+                  </>
+                )}
+              </div>
+            </>
+          )}
+        </div>
         <button
           onClick={() => navigate(-1)}
-          className="mb-4 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-white/10 rounded-xl text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
+          className="shrink-0 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-white/10 rounded-xl text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
         >
           ← Back
         </button>
-
-        <div
-          id="video-player-container"
-          tabIndex={0}
-          className={`bg-black overflow-hidden relative focus:outline-none transition-shadow ${
-            isFullscreen
-              ? 'w-full h-full cursor-none'
-              : 'aspect-video rounded-2xl border border-white/5 focus:ring-4 focus:ring-red-600'
-          }`}
-        >
-          <video
-            ref={videoElRef}
-            className="w-full h-full"
-          />
-          <PlayerOverlay
-            playAction={playAction}
-            paused={paused}
-            seekAction={seekAction}
-            seekDelta={seekDelta}
-            volumeAction={volumeAction}
-            volume={volume}
-            qualityAction={qualityAction}
-            qualityLabel={qualityLabel}
-            videoEl={videoElRef.current}
-            dashPlayer={dashPlayerRef.current}
-          />
-          {loading && (
-            <div className="absolute inset-0 flex items-center justify-center text-zinc-400">
-              Loading player...
-            </div>
-          )}
-          {error && (
-            <div className="absolute inset-0 flex items-center justify-center text-red-400">
-              {error}
-            </div>
-          )}
-          <QualitySelector
-            open={qualityMenuOpen}
-            onClose={() => setQualityMenuOpen(false)}
-            qualities={dashQualities.length > 0 ? dashQualities : [{ label: 'Auto', value: 'auto' }]}
-            currentQuality={currentQuality}
-            onSelectQuality={handleSelectQuality}
-          />
-        </div>
-
-        {videoData && (
-          <div className="mt-4">
-            <h1 className="text-xl font-semibold text-zinc-100">{videoData.title}</h1>
-            <div className="flex items-center gap-2 mt-1">
-              {videoData.channelId ? (
-                <Link to={`/channel/${videoData.channelId}`} className="text-zinc-400 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-red-600 rounded">
-                  {videoData.channelName}
-                </Link>
-              ) : (
-                <span className="text-zinc-400">{videoData.channelName}</span>
-              )}
-              {videoData.viewCount !== undefined && (
-                <>
-                  <span className="text-zinc-600">•</span>
-                  <span className="text-zinc-400">{formatViews(videoData.viewCount)}</span>
-                </>
-              )}
-              {videoData.publishedTimeText && (
-                <>
-                  <span className="text-zinc-600">•</span>
-                  <span className="text-zinc-400">{videoData.publishedTimeText}</span>
-                </>
-              )}
-            </div>
-            {videoData.description && (
-              <p className="text-sm text-zinc-500 mt-2 line-clamp-3">{videoData.description}</p>
-            )}
-          </div>
-        )}
-
       </div>
     </div>
   )
