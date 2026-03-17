@@ -55,6 +55,7 @@ export function InputProvider({ children }: InputProviderProps) {
 
       if (e.key === 'Escape') {
         e.preventDefault()
+        if (e.repeat) return
         if (Date.now() - lastGamepadActionRef.current < 100) return
         goBack()
         return
@@ -94,6 +95,7 @@ export function InputProvider({ children }: InputProviderProps) {
           break
         case 'Enter': {
           e.preventDefault()
+          if (e.repeat) break
           if (Date.now() - lastGamepadActionRef.current < 100) break
           if (actions.select) {
             actions.select()
