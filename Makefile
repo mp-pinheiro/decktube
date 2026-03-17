@@ -49,8 +49,10 @@ build:
 
 _BUMP_TYPE := $(or $(filter major minor patch,$(MAKECMDGOALS)),patch)
 
-bump: build
+bump:
+	npm run build
 	npm version $(_BUMP_TYPE)
+	npm run build:electron
 
 release: bump
 	git push && git push --tags
