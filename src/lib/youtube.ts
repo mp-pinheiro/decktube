@@ -545,6 +545,7 @@ export interface AdaptiveFormat {
   height?: number
   qualityLabel?: string
   contentLength?: string
+  approxDurationMs?: string
   indexRange?: { start: string; end: string }
   initRange?: { start: string; end: string }
 }
@@ -600,6 +601,7 @@ export async function getPlayerData(videoId: string): Promise<PlayerData> {
       height: f.height,
       qualityLabel: f.qualityLabel,
       contentLength: f.contentLength,
+      approxDurationMs: f.approxDurationMs,
       indexRange: f.indexRange,
       initRange: f.initRange,
     }))
@@ -611,6 +613,18 @@ function escapeXml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+function formatIsoDuration(ms: number): string {
+  const totalSeconds = ms / 1000
+  const h = Math.floor(totalSeconds / 3600)
+  const m = Math.floor((totalSeconds % 3600) / 60)
+  const s = (totalSeconds % 60).toFixed(3)
+  let dur = 'PT'
+  if (h > 0) dur += `${h}H`
+  if (m > 0) dur += `${m}M`
+  dur += `${s}S`
+  return dur
+}
+
 export function generateMpd(formats: AdaptiveFormat[]): string {
   const groups = new Map<string, AdaptiveFormat[]>()
   for (const f of formats) {
@@ -619,6 +633,15 @@ export function generateMpd(formats: AdaptiveFormat[]): string {
     if (!groups.has(baseMime)) groups.set(baseMime, [])
     groups.get(baseMime)!.push(f)
   }
+
+  let maxDurationMs = 0
+  for (const f of formats) {
+    if (f.approxDurationMs) {
+      const d = parseInt(f.approxDurationMs, 10)
+      if (d > maxDurationMs) maxDurationMs = d
+    }
+  }
+  const durationAttr = maxDurationMs > 0 ? ` mediaPresentationDuration="${formatIsoDuration(maxDurationMs)}"` : ''
 
   let adaptationSets = ''
   for (const [mime, fmts] of groups) {
@@ -645,6 +668,7 @@ export function generateMpd(formats: AdaptiveFormat[]): string {
 
   const mpd = `<?xml version="1.0" encoding="UTF-8"?>` +
     `<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static" minBufferTime="PT1.5S"` +
+    `${durationAttr}` +
     ` profiles="urn:mpeg:dash:profile:isoff-on-demand:2011">` +
     `<Period>${adaptationSets}</Period></MPD>`
 
