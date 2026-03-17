@@ -6,7 +6,7 @@ STEAM_GAME_ID ?=
 
 GRID_DIR = /home/deck/.local/share/Steam/userdata/$(STEAM_USER_ID)/config/grid
 
-.PHONY: assets build bump deploy deploy-art
+.PHONY: assets build bump release deploy deploy-art
 
 assets:
 	convert -size 3840x1240 xc:'#0d0d1a' \
@@ -49,6 +49,9 @@ build:
 
 bump:
 	npm version patch
+
+release:
+	npm version patch && git push && git push --tags
 
 deploy: build
 	cp "$$(ls -1t release/DeckTube-*.AppImage | head -1)" release/DeckTube.AppImage
