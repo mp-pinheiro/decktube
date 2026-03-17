@@ -49,11 +49,11 @@ build:
 
 _BUMP_TYPE := $(or $(filter major minor patch,$(MAKECMDGOALS)),patch)
 
-bump:
+bump: build
 	npm version $(_BUMP_TYPE)
 
-release:
-	npm version $(_BUMP_TYPE) && git push && git push --tags
+release: bump
+	git push && git push --tags
 
 major minor patch:
 	@:
