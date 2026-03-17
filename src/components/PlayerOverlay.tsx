@@ -7,7 +7,7 @@ import QualityIndicator from './overlay/QualityIndicator'
 
 export function useAutoFade(trigger: number, durationMs: number): boolean {
   const [visible, setVisible] = useState(false)
-  const timerRef = useRef<ReturnType<typeof setTimeout>>()
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   useEffect(() => {
     if (trigger === 0) return

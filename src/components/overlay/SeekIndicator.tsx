@@ -72,7 +72,7 @@ export default function SeekIndicator({ trigger, seekDelta, videoEl, dashPlayer,
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.15, exit: { duration: 0.3 } }}
+            transition={{ duration: 0.15 }}
             className="px-4 pb-2 flex items-center gap-3"
           >
             <span className="bg-black/70 backdrop-blur-sm rounded px-2 py-0.5 text-sm text-white font-medium tabular-nums">

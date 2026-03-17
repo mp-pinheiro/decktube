@@ -17,8 +17,8 @@ export default function PlayPauseIndicator({ trigger, paused }: PlayPauseIndicat
           key={trigger}
           initial={{ opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.15, exit: { duration: 0.3 } }}
+          exit={{ opacity: 0, transition: { duration: 0.3 } }}
+          transition={{ duration: 0.15 }}
           className="absolute inset-0 flex items-center justify-center pointer-events-none"
         >
           <div className="bg-black/60 backdrop-blur-sm rounded-full p-4">

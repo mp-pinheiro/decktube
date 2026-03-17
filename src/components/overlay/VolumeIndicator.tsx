@@ -25,8 +25,8 @@ export default function VolumeIndicator({ trigger, volume, paused }: VolumeIndic
           key={actionVisible ? trigger : 'paused'}
           initial={{ opacity: 0, x: 12 }}
           animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: 12 }}
-          transition={{ duration: 0.15, exit: { duration: 0.3 } }}
+          exit={{ opacity: 0, x: 12, transition: { duration: 0.3 } }}
+          transition={{ duration: 0.15 }}
           className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2 pointer-events-none"
         >
           <VolumeIcon volume={volume} />
