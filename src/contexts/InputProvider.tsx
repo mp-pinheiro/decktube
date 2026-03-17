@@ -11,7 +11,12 @@ interface InputProviderProps {
 
 export function InputProvider({ children }: InputProviderProps) {
   const navigate = useNavigate()
+  const location = useLocation()
   const actionsRef = useRef<Partial<Record<ButtonAction, () => void>>>({})
+  const locationKeyRef = useRef(location.key)
+  const lastGamepadActionRef = useRef(0)
+
+  useEffect(() => { locationKeyRef.current = location.key }, [location.key])
 
   const focusSearch = useCallback(() => {
     const searchInput = document.querySelector('input[type="text"]') as HTMLElement
@@ -24,7 +29,7 @@ export function InputProvider({ children }: InputProviderProps) {
 
     if (isInputFocused) {
       activeEl?.blur()
-    } else {
+    } else if (locationKeyRef.current !== 'default') {
       navigate(-1)
     }
   }, [navigate])
@@ -49,6 +54,7 @@ export function InputProvider({ children }: InputProviderProps) {
       }
 
       if (e.key === 'Escape') {
+        if (Date.now() - lastGamepadActionRef.current < 100) return
         goBack()
         return
       }
@@ -86,6 +92,7 @@ export function InputProvider({ children }: InputProviderProps) {
           }
           break
         case 'Enter':
+          if (Date.now() - lastGamepadActionRef.current < 100) break
           if (actions.select) {
             e.preventDefault()
             actions.select()
@@ -112,17 +119,25 @@ export function InputProvider({ children }: InputProviderProps) {
 
       if ((!activeEl || activeEl === document.body) &&
           ['DPAD_UP', 'DPAD_DOWN', 'DPAD_LEFT', 'DPAD_RIGHT', 'A'].includes(button)) {
-        if (bootstrapNavFocus()) return
+        if (bootstrapNavFocus()) {
+          if (button !== 'A') return
+        }
+      }
+
+      if (button === 'A' || button === 'B') {
+        lastGamepadActionRef.current = Date.now()
       }
 
       switch (button) {
-        case 'A':
+        case 'A': {
+          const currentEl = document.activeElement as HTMLElement | null
           if (actions.select) {
             actions.select()
           } else {
-            activeEl?.click()
+            currentEl?.click()
           }
           break
+        }
         case 'B':
           goBack()
           break
@@ -174,8 +189,6 @@ export function InputProvider({ children }: InputProviderProps) {
       cleanupSpatialNav()
     }
   }, [focusSearch, goBack])
-
-  const location = useLocation()
 
   useEffect(() => {
     return waitForBootstrap()
