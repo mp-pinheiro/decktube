@@ -9,22 +9,17 @@ A web app for watching YouTube videos on Steam Deck with controller/keyboard-fri
 
 ## Technical Decisions
 
-Foundational technical decisions for Phase 0 are documented in [docs/phases/phase-0.md](./docs/phases/phase-0.md):
-
-- **API:** Invidious (no keys, no quotas, self-hostable)
-- **Routing:** React Router v7 (to be added in Phase 1)
+- **API:** YouTube innertube API (youtubei/v1) via proxy -- IOS client for player, TVHTML5/WEB for browse/search
+- **Player:** dash.js (DASH adaptive streaming via generated MPD manifests)
+- **Routing:** React Router v7
 - **State:** React Context (current implementation)
-
-## Current Phase: Phase 0 - Basic Player
-
-This is an ambitious multi-phase project. We are currently in Phase 0, which provides a basic video player with manual video ID/URL input. Future phases will add routing, API integration, authentication, and a full home page experience.
 
 ## Tech Stack
 
 - React + Vite + TypeScript
 - Tailwind CSS
-- YouTube IFrame API
-- jj (jujutsu) for version control
+- dash.js (DASH adaptive streaming player)
+- YouTube innertube API (no IFrame, no Invidious)
 
 ## Key Features & Core UX Philosophy
 
@@ -42,9 +37,9 @@ ALL FEATURES MUST adhere to the Steam Deck controller UX. You are not building a
   - S / Y: Focus search
   - Space / RB: Play/Pause
   - F / LB: Fullscreen
+  - Q / LT: Quality selector
   - Arrows / D-Pad: Navigate UI / Seek & Volume on watch page
   - H / Select: Open help modal
-- Default video loads on startup
 
 ## Development
 
