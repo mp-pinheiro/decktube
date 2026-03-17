@@ -4,6 +4,7 @@ import { MediaPlayer, type MediaPlayerClass, type Representation } from 'dashjs'
 import { getVideoDetails, getPlayerData, generateMpd, type YouTubeVideo } from '../lib/youtube'
 import { useInputContext } from '../contexts/InputProvider'
 import QualitySelector, { type QualityOption } from '../components/QualitySelector'
+import PlayerOverlay from '../components/PlayerOverlay'
 
 function heightToLabel(height: number): string {
   if (height >= 2160) return '4K'
@@ -40,6 +41,14 @@ export default function WatchPage() {
   const [currentQuality, setCurrentQuality] = useState('auto')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [paused, setPaused] = useState(true)
+
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [playAction, setPlayAction] = useState(0)
+  const [seekAction, setSeekAction] = useState(0)
+  const [seekDelta, setSeekDelta] = useState(0)
+  const [volumeAction, setVolumeAction] = useState(0)
+  const [qualityAction, setQualityAction] = useState(0)
 
   const destroyDash = useCallback(() => {
     if (dashPlayerRef.current) {
@@ -136,6 +145,19 @@ export default function WatchPage() {
     }
   }, [videoId, destroyDash, initDash])
 
+  useEffect(() => {
+    const video = videoElRef.current
+    if (!video) return
+    const onPlay = () => setPaused(false)
+    const onPause = () => setPaused(true)
+    video.addEventListener('play', onPlay)
+    video.addEventListener('pause', onPause)
+    return () => {
+      video.removeEventListener('play', onPlay)
+      video.removeEventListener('pause', onPause)
+    }
+  }, [])
+
   const togglePlay = useCallback(() => {
     const video = videoElRef.current
     if (!video) return
@@ -144,12 +166,15 @@ export default function WatchPage() {
     } else {
       video.pause()
     }
+    setPlayAction(c => c + 1)
   }, [])
 
   const seek = useCallback((delta: number) => {
     const video = videoElRef.current
     if (!video) return
     video.currentTime = Math.max(0, video.currentTime + delta)
+    setSeekDelta(delta)
+    setSeekAction(c => c + 1)
   }, [])
 
   const setVolume = useCallback((newVolume: number) => {
@@ -158,6 +183,7 @@ export default function WatchPage() {
     if (dashPlayerRef.current) {
       dashPlayerRef.current.setVolume(clamped / 100)
     }
+    setVolumeAction(c => c + 1)
   }, [])
 
   const handleSelectQuality = useCallback((value: string) => {
@@ -165,6 +191,7 @@ export default function WatchPage() {
       if (dashPlayerRef.current) {
         dashPlayerRef.current.updateSettings({ streaming: { abr: { autoSwitchBitrate: { video: true } } } })
         setCurrentQuality('auto')
+        setQualityAction(c => c + 1)
       }
     } else {
       const height = parseInt(value, 10)
@@ -176,6 +203,7 @@ export default function WatchPage() {
         dashPlayerRef.current.updateSettings({ streaming: { abr: { autoSwitchBitrate: { video: false } } } })
         dashPlayerRef.current.setRepresentationForTypeByIndex('video', rep.index)
         setCurrentQuality(value)
+        setQualityAction(c => c + 1)
       }
     }
   }, [])
@@ -192,7 +220,10 @@ export default function WatchPage() {
   }, [])
 
   useEffect(() => {
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', onChange)
     return () => {
+      document.removeEventListener('fullscreenchange', onChange)
       if (document.fullscreenElement) {
         document.exitFullscreen().catch(() => {})
       }
@@ -277,11 +308,27 @@ export default function WatchPage() {
         <div
           id="video-player-container"
           tabIndex={0}
-          className="aspect-video bg-black rounded-2xl overflow-hidden relative focus:outline-none focus:ring-4 focus:ring-red-600 transition-shadow border border-white/5"
+          className={`bg-black overflow-hidden relative focus:outline-none transition-shadow ${
+            isFullscreen
+              ? 'w-full h-full cursor-none'
+              : 'aspect-video rounded-2xl border border-white/5 focus:ring-4 focus:ring-red-600'
+          }`}
         >
           <video
             ref={videoElRef}
             className="w-full h-full"
+          />
+          <PlayerOverlay
+            playAction={playAction}
+            paused={paused}
+            seekAction={seekAction}
+            seekDelta={seekDelta}
+            volumeAction={volumeAction}
+            volume={volume}
+            qualityAction={qualityAction}
+            qualityLabel={qualityLabel}
+            videoEl={videoElRef.current}
+            dashPlayer={dashPlayerRef.current}
           />
           {loading && (
             <div className="absolute inset-0 flex items-center justify-center text-zinc-400">
@@ -332,18 +379,6 @@ export default function WatchPage() {
           </div>
         )}
 
-        <div className="mt-4 flex items-center gap-4 text-sm text-zinc-400">
-          <div className="flex items-center gap-2">
-            <span>Volume: {volume}%</span>
-          </div>
-          {qualityLabel && (
-            <span className="text-zinc-500">{qualityLabel}</span>
-          )}
-          <div className="flex-1" />
-          <div className="text-xs text-zinc-500">
-            Space: Play/Pause | Arrows: Seek/Vol | F: Fullscreen | Q: Quality | C: Channel | Esc: Back
-          </div>
-        </div>
       </div>
     </div>
   )
