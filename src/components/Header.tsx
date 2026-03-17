@@ -31,7 +31,7 @@ export default function Header() {
       </Link>
 
       <form onSubmit={handleSearch} className="flex-1 max-w-2xl px-8">
-        <div className="relative group">
+        <div className="relative group w-full">
           <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-zinc-500 group-focus-within:text-blue-400 transition-colors">
             <Search size={18} />
           </div>
@@ -53,7 +53,7 @@ export default function Header() {
       <div className="flex items-center gap-3">
         {authenticated ? (
           <>
-            <span className="text-xs text-zinc-600 select-none">v{__APP_VERSION__}</span>
+            <span className="text-xs text-zinc-600 select-none leading-none">v{__APP_VERSION__}</span>
             <button
               onClick={handleLogout}
               className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-white/10 rounded-full text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"

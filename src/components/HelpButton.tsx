@@ -12,7 +12,7 @@ const SHORTCUTS = [
   { action: 'Help', keyboard: 'H', gamepad: 'Select' },
 ]
 
-export default function HelpButton() {
+export default function HelpButton({ inline = false }: { inline?: boolean }) {
   const [open, setOpen] = useState(false)
   const modalRef = useRef<HTMLDivElement>(null)
 
@@ -50,7 +50,7 @@ export default function HelpButton() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 w-9 h-9 flex items-center justify-center bg-zinc-900/90 backdrop-blur-md border border-white/10 rounded-full text-zinc-400 text-sm font-bold z-40 hover:text-white focus:outline-none focus:ring-2 focus:ring-red-500"
+        className={`w-9 h-9 flex items-center justify-center bg-zinc-900/90 backdrop-blur-md border border-white/10 rounded-full text-zinc-400 text-sm font-bold hover:text-white focus:outline-none focus:ring-2 focus:ring-red-500${inline ? '' : ' fixed bottom-6 right-6 z-40'}`}
       >
         ?
       </button>
