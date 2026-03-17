@@ -47,11 +47,16 @@ assets:
 build:
 	npm run build:electron
 
+_BUMP_TYPE := $(or $(filter major minor patch,$(MAKECMDGOALS)),patch)
+
 bump:
-	npm version patch
+	npm version $(_BUMP_TYPE)
 
 release:
-	npm version patch && git push && git push --tags
+	npm version $(_BUMP_TYPE) && git push && git push --tags
+
+major minor patch:
+	@:
 
 deploy: build
 	cp "$$(ls -1t release/DeckTube-*.AppImage | head -1)" release/DeckTube.AppImage
