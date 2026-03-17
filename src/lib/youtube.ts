@@ -274,7 +274,6 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
         const menuItems = tile.onLongPressCommand?.showMenuCommand?.menu?.menuRenderer?.items || []
         for (const menuItem of menuItems) {
           const navItem = menuItem.menuNavigationItemRenderer
-          // Sometimes the text is 'Go to channel', but we can also just look for any browseId that starts with UC
           const browseId = navItem?.navigationEndpoint?.browseEndpoint?.browseId
           if (browseId && browseId.startsWith('UC')) {
             channelId = browseId
@@ -323,7 +322,6 @@ function extractContinuationToken(data: unknown): string | null {
     if (typeof current !== 'object' || current === null) return
     const obj = current as Record<string, unknown>
 
-    // WEB client style: continuationItemRenderer
     if ('continuationItemRenderer' in obj) {
       const renderer = obj.continuationItemRenderer as Record<string, unknown>
       const endpoint = renderer.continuationEndpoint as Record<string, unknown> | undefined
@@ -340,7 +338,6 @@ function extractContinuationToken(data: unknown): string | null {
       }
     }
 
-    // TV client style: nextContinuationData
     if ('nextContinuationData' in obj) {
       const nextCont = obj.nextContinuationData as Record<string, unknown>
       if (typeof nextCont.continuation === 'string') {
@@ -683,7 +680,6 @@ export async function getChannelVideos(channelId: string): Promise<YouTubeVideo[
     }, true)) as Record<string, unknown>
 
     const videos = extractVideosFromRenderers(response)
-    // Filter out channel items or non-videos if they appear, though home parser usually catches just videos
     return videos.map(v => ({ ...v, type: 'video' as const }))
   } catch (error) {
     console.error('Error fetching channel videos:', error)

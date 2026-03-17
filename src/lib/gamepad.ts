@@ -19,7 +19,6 @@ type GamepadButtonHandler = (button: string, pressed: boolean) => void
 
 let animationFrameId: number | null = null
 let buttonHandlers: GamepadButtonHandler[] = []
-// Per-gamepad state tracking keyed by gamepad index
 const previousButtonStates = new Map<number, boolean[]>()
 
 function pollGamepads() {
