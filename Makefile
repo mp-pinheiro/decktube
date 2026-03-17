@@ -51,7 +51,7 @@ bump:
 	npm version patch
 
 deploy: build
-	cp release/DeckTube-*.AppImage release/DeckTube.AppImage
+	cp "$$(ls -1t release/DeckTube-*.AppImage | head -1)" release/DeckTube.AppImage
 	scp release/DeckTube.AppImage $(DECK_HOST):/home/deck/DeckTube.AppImage
 
 deploy-art:
