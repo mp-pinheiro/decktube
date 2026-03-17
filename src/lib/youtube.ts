@@ -589,6 +589,7 @@ export async function getPlayerData(videoId: string): Promise<PlayerData> {
   const rawFormats = (streamingData?.adaptiveFormats as any[]) || []
   const adaptiveFormats: AdaptiveFormat[] = rawFormats
     .filter((f: any) => f.url)
+    .filter((f: any) => !f.audioTrack || f.audioTrack.audioIsDefault !== false)
     .map((f: any) => ({
       itag: f.itag,
       url: f.url,
