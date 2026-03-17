@@ -50,7 +50,7 @@ export default function PlayerOverlay({
       <PlayPauseIndicator trigger={playAction} paused={paused} />
       <VolumeIndicator trigger={volumeAction} volume={volume} paused={paused} />
       <SeekIndicator trigger={seekAction} seekDelta={seekDelta} videoEl={videoEl} dashPlayer={dashPlayer} paused={paused} />
-      <QualityIndicator trigger={qualityAction} label={qualityLabel} />
+      <QualityIndicator trigger={qualityAction} label={qualityLabel} paused={paused} />
     </div>
   )
 }
