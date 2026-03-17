@@ -1,55 +1,184 @@
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useEffect, useState, useCallback, useRef } from 'react'
-import useYouTubePlayer from '../hooks/useYouTubePlayer'
-import { getVideoDetails, type YouTubeVideo } from '../lib/youtube'
+import { MediaPlayer, type MediaPlayerClass, type Representation } from 'dashjs'
+import { getVideoDetails, getPlayerData, generateMpd, type YouTubeVideo } from '../lib/youtube'
 import { useInputContext } from '../contexts/InputProvider'
+import QualitySelector, { type QualityOption } from '../components/QualitySelector'
+
+function heightToLabel(height: number): string {
+  if (height >= 2160) return '4K'
+  return `${height}p`
+}
+
+function buildQualityOptions(representations: Representation[]): QualityOption[] {
+  const sorted = [...representations].sort((a, b) => b.height - a.height)
+  const options: QualityOption[] = [{ label: 'Auto', value: 'auto' }]
+  for (const rep of sorted) {
+    if (rep.height <= 0) continue
+    const label = heightToLabel(rep.height)
+    if (options.some(o => o.label === label)) continue
+    options.push({ label, value: String(rep.height) })
+  }
+  return options
+}
 
 export default function WatchPage() {
   const { videoId } = useParams<{ videoId: string }>()
   const navigate = useNavigate()
-  const containerRef = useRef<HTMLDivElement>(null)
-  const { player, isReady, apiReady, isPlaying } = useYouTubePlayer(videoId || null, containerRef)
+  const videoElRef = useRef<HTMLVideoElement>(null)
+  const dashPlayerRef = useRef<MediaPlayerClass | null>(null)
+  const blobUrlRef = useRef<string | null>(null)
   const { registerActions, unregisterActions } = useInputContext()
 
   const [volume, setVolumeState] = useState(100)
+  const volumeRef = useRef(volume)
+  volumeRef.current = volume
+
   const [videoData, setVideoData] = useState<YouTubeVideo | null>(null)
+  const [qualityMenuOpen, setQualityMenuOpen] = useState(false)
+  const [dashQualities, setDashQualities] = useState<QualityOption[]>([])
+  const [currentQuality, setCurrentQuality] = useState('auto')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const destroyDash = useCallback(() => {
+    if (dashPlayerRef.current) {
+      dashPlayerRef.current.destroy()
+      dashPlayerRef.current = null
+    }
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current)
+      blobUrlRef.current = null
+    }
+  }, [])
+
+  const initDash = useCallback((url: string) => {
+    if (!videoElRef.current) return
+
+    const dp = MediaPlayer().create()
+
+    dp.addRequestInterceptor(async (request) => {
+      if (request.url && (request.url.includes('googlevideo.com') || request.url.includes('youtube.com'))) {
+        request.url = `/stream-proxy?url=${encodeURIComponent(request.url)}`
+      }
+      return request
+    })
+
+    dp.initialize(videoElRef.current, url, true)
+
+    dp.on('streamInitialized', () => {
+      const reps = dp.getRepresentationsByType('video')
+      if (reps?.length) {
+        setDashQualities(buildQualityOptions(reps))
+      }
+      dp.setVolume(volumeRef.current / 100)
+      setError(null)
+      setLoading(false)
+    })
+
+    dp.on('error', (e: any) => {
+      console.error('dash.js error:', e)
+      if (!dp.isReady()) {
+        setError('Failed to load video stream')
+        setLoading(false)
+      }
+    })
+
+    dashPlayerRef.current = dp
+  }, [])
 
   useEffect(() => {
-    async function loadData() {
-      if (!videoId) return
+    if (!videoId) return
 
-      const details = await getVideoDetails(videoId)
+    setLoading(true)
+    setError(null)
+    setDashQualities([])
+    setCurrentQuality('auto')
+    destroyDash()
+
+    let cancelled = false
+
+    async function load() {
+      const [details, playerData] = await Promise.all([
+        getVideoDetails(videoId!),
+        getPlayerData(videoId!),
+      ])
+
+      if (cancelled) return
+
       setVideoData(details)
+
+      if (playerData.adaptiveFormats.length === 0) {
+        setError('No playable streams found')
+        setLoading(false)
+        return
+      }
+
+      const mpdXml = generateMpd(playerData.adaptiveFormats)
+      const blob = new Blob([mpdXml], { type: 'application/dash+xml' })
+      const blobUrl = URL.createObjectURL(blob)
+      blobUrlRef.current = blobUrl
+
+      initDash(blobUrl)
     }
 
-    loadData()
-  }, [videoId])
+    load().catch((err) => {
+      if (!cancelled) {
+        console.error('Failed to load video:', err)
+        setError(err instanceof Error ? err.message : 'Failed to load video data')
+        setLoading(false)
+      }
+    })
+
+    return () => {
+      cancelled = true
+      destroyDash()
+    }
+  }, [videoId, destroyDash, initDash])
 
   const togglePlay = useCallback(() => {
-    if (!player || !isReady) return
-    if (isPlaying) {
-      player.pauseVideo()
+    const video = videoElRef.current
+    if (!video) return
+    if (video.paused) {
+      video.play()
     } else {
-      player.playVideo()
+      video.pause()
     }
-  }, [player, isReady, isPlaying])
+  }, [])
 
   const seek = useCallback((delta: number) => {
-    if (!player || !isReady) return
-
-    const currentTime = player.getCurrentTime()
-    const newTime = Math.max(0, currentTime + delta)
-
-    player.seekTo(newTime, true)
-  }, [player, isReady])
+    const video = videoElRef.current
+    if (!video) return
+    video.currentTime = Math.max(0, video.currentTime + delta)
+  }, [])
 
   const setVolume = useCallback((newVolume: number) => {
     const clamped = Math.min(100, Math.max(0, newVolume))
     setVolumeState(clamped)
-    if (player && isReady) {
-      player.setVolume(clamped)
+    if (dashPlayerRef.current) {
+      dashPlayerRef.current.setVolume(clamped / 100)
     }
-  }, [player, isReady])
+  }, [])
+
+  const handleSelectQuality = useCallback((value: string) => {
+    if (value === 'auto') {
+      if (dashPlayerRef.current) {
+        dashPlayerRef.current.updateSettings({ streaming: { abr: { autoSwitchBitrate: { video: true } } } })
+        setCurrentQuality('auto')
+      }
+    } else {
+      const height = parseInt(value, 10)
+      if (isNaN(height) || !dashPlayerRef.current) return
+
+      const reps = dashPlayerRef.current.getRepresentationsByType('video')
+      const rep = reps?.find(r => r.height === height)
+      if (rep) {
+        dashPlayerRef.current.updateSettings({ streaming: { abr: { autoSwitchBitrate: { video: false } } } })
+        dashPlayerRef.current.setRepresentationForTypeByIndex('video', rep.index)
+        setCurrentQuality(value)
+      }
+    }
+  }, [])
 
   const toggleFullscreen = useCallback(() => {
     const playerContainer = document.getElementById('video-player-container')
@@ -76,26 +205,25 @@ export default function WatchPage() {
     }
   }, [navigate, videoData])
 
-  useEffect(() => {
-    if (player && isReady) {
-      player.setVolume(volume)
-    }
-  }, [volume, player, isReady])
+  const toggleQuality = useCallback(() => {
+    setQualityMenuOpen(prev => !prev)
+  }, [])
 
   useEffect(() => {
     registerActions({
       play: togglePlay,
       channel: goToChannel,
       fullscreen: toggleFullscreen,
+      quality: toggleQuality,
     })
     return () => unregisterActions()
-  }, [registerActions, unregisterActions, togglePlay, goToChannel, toggleFullscreen])
+  }, [registerActions, unregisterActions, togglePlay, goToChannel, toggleFullscreen, toggleQuality])
 
   useEffect(() => {
     const handlePlayerKeydown = (e: KeyboardEvent) => {
       const isInputFocused = document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA'
 
-      if (isInputFocused) return
+      if (isInputFocused || qualityMenuOpen) return
 
       switch (e.key) {
         case 'ArrowRight':
@@ -119,7 +247,7 @@ export default function WatchPage() {
 
     window.addEventListener('keydown', handlePlayerKeydown, true)
     return () => window.removeEventListener('keydown', handlePlayerKeydown, true)
-  }, [seek, setVolume, volume])
+  }, [seek, setVolume, volume, qualityMenuOpen])
 
   if (!videoId) {
     return (
@@ -132,12 +260,9 @@ export default function WatchPage() {
     )
   }
 
-  const formatViews = (views: number | undefined): string => {
-    if (!views) return ''
-    if (views >= 1000000) return `${(views / 1000000).toFixed(1)}M views`
-    if (views >= 1000) return `${(views / 1000).toFixed(1)}K views`
-    return `${views} views`
-  }
+  const qualityLabel = currentQuality === 'auto'
+    ? 'Auto'
+    : dashQualities.find(q => q.value === currentQuality)?.label || ''
 
   return (
     <div className="flex gap-6">
@@ -154,12 +279,27 @@ export default function WatchPage() {
           tabIndex={0}
           className="aspect-video bg-black rounded-2xl overflow-hidden relative focus:outline-none focus:ring-4 focus:ring-red-600 transition-shadow border border-white/5"
         >
-          <div ref={containerRef} className="w-full h-full" />
-          {!apiReady && (
+          <video
+            ref={videoElRef}
+            className="w-full h-full"
+          />
+          {loading && (
             <div className="absolute inset-0 flex items-center justify-center text-zinc-400">
               Loading player...
             </div>
           )}
+          {error && (
+            <div className="absolute inset-0 flex items-center justify-center text-red-400">
+              {error}
+            </div>
+          )}
+          <QualitySelector
+            open={qualityMenuOpen}
+            onClose={() => setQualityMenuOpen(false)}
+            qualities={dashQualities.length > 0 ? dashQualities : [{ label: 'Auto', value: 'auto' }]}
+            currentQuality={currentQuality}
+            onSelectQuality={handleSelectQuality}
+          />
         </div>
 
         {videoData && (
@@ -196,12 +336,22 @@ export default function WatchPage() {
           <div className="flex items-center gap-2">
             <span>Volume: {volume}%</span>
           </div>
+          {qualityLabel && (
+            <span className="text-zinc-500">{qualityLabel}</span>
+          )}
           <div className="flex-1" />
           <div className="text-xs text-zinc-500">
-            Space: Play/Pause | Arrows: Seek/Vol | F: Fullscreen | C: Channel | Esc: Back
+            Space: Play/Pause | Arrows: Seek/Vol | F: Fullscreen | Q: Quality | C: Channel | Esc: Back
           </div>
         </div>
       </div>
     </div>
   )
+}
+
+function formatViews(views: number | undefined): string {
+  if (!views) return ''
+  if (views >= 1000000) return `${(views / 1000000).toFixed(1)}M views`
+  if (views >= 1000) return `${(views / 1000).toFixed(1)}K views`
+  return `${views} views`
 }

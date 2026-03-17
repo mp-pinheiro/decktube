@@ -21,6 +21,20 @@ const TV_CLIENT_CONFIG = {
   gl: 'US',
 } as const
 
+const IOS_PLAYER_CONFIG = {
+  clientName: 'IOS',
+  clientVersion: '20.20.7',
+  deviceMake: 'Apple',
+  deviceModel: 'iPhone16,2',
+  osName: 'iOS',
+  osVersion: '18.5.0.22F76',
+  platform: 'MOBILE',
+  hl: 'en',
+  gl: 'US',
+} as const
+
+const IOS_USER_AGENT = 'com.google.ios.youtube/20.20.7 (iPhone16,2; U; CPU iOS 18_5_0 like Mac OS X)'
+
 type Context = {
   client: typeof CLIENT_CONFIG | typeof TV_CLIENT_CONFIG
 }
@@ -520,6 +534,121 @@ export async function search(query: string): Promise<YouTubeSearchResult[]> {
 
   const videos = extractVideosFromRenderers(response)
   return videos.map(v => ({ ...v, type: 'video' as const }))
+}
+
+export interface AdaptiveFormat {
+  itag: number
+  url: string
+  mimeType: string
+  bitrate: number
+  width?: number
+  height?: number
+  qualityLabel?: string
+  contentLength?: string
+  indexRange?: { start: string; end: string }
+  initRange?: { start: string; end: string }
+}
+
+export interface PlayerData {
+  adaptiveFormats: AdaptiveFormat[]
+}
+
+export async function getPlayerData(videoId: string): Promise<PlayerData> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-YouTube-Client-Name': '5',
+    'X-YouTube-Client-Version': IOS_PLAYER_CONFIG.clientVersion,
+    'X-YouTube-Player-User-Agent': IOS_USER_AGENT,
+  }
+
+  const body = {
+    context: { client: IOS_PLAYER_CONFIG },
+    videoId,
+    contentCheckOk: true,
+    racyCheckOk: true,
+    params: '2AMB',
+  }
+
+  const response = await fetch('/youtubei/v1/player?prettyPrint=false', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => 'Unknown error')
+    throw new Error(`YouTube API error: ${response.status} ${response.statusText} - ${text}`)
+  }
+
+  const data = (await response.json()) as Record<string, unknown>
+
+  const playability = data.playabilityStatus as { status?: string; reason?: string } | undefined
+  if (playability?.status && playability.status !== 'OK') {
+    throw new Error(playability.reason || `Video is ${playability.status.toLowerCase()}`)
+  }
+
+  const streamingData = data.streamingData as Record<string, unknown> | undefined
+  const rawFormats = (streamingData?.adaptiveFormats as any[]) || []
+  const adaptiveFormats: AdaptiveFormat[] = rawFormats
+    .filter((f: any) => f.url)
+    .map((f: any) => ({
+      itag: f.itag,
+      url: f.url,
+      mimeType: f.mimeType || '',
+      bitrate: f.bitrate || 0,
+      width: f.width,
+      height: f.height,
+      qualityLabel: f.qualityLabel,
+      contentLength: f.contentLength,
+      indexRange: f.indexRange,
+      initRange: f.initRange,
+    }))
+
+  return { adaptiveFormats }
+}
+
+function escapeXml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+export function generateMpd(formats: AdaptiveFormat[]): string {
+  const groups = new Map<string, AdaptiveFormat[]>()
+  for (const f of formats) {
+    if (!f.url) continue
+    const baseMime = f.mimeType.split(';')[0].trim()
+    if (!groups.has(baseMime)) groups.set(baseMime, [])
+    groups.get(baseMime)!.push(f)
+  }
+
+  let adaptationSets = ''
+  for (const [mime, fmts] of groups) {
+    const isVideo = mime.startsWith('video/')
+    let representations = ''
+    for (const f of fmts) {
+      const codecMatch = f.mimeType.match(/codecs="([^"]+)"/)
+      const codecs = codecMatch ? codecMatch[1] : ''
+      let segmentBase = ''
+      if (f.indexRange && f.initRange) {
+        segmentBase = `<SegmentBase indexRange="${f.indexRange.start}-${f.indexRange.end}">` +
+          `<Initialization range="${f.initRange.start}-${f.initRange.end}"/>` +
+          `</SegmentBase>`
+      }
+      representations += `<Representation id="${f.itag}" bandwidth="${f.bitrate}"` +
+        `${isVideo ? ` width="${f.width || 0}" height="${f.height || 0}"` : ''}` +
+        ` codecs="${codecs}">` +
+        `<BaseURL>${escapeXml(f.url)}</BaseURL>` +
+        `${segmentBase}</Representation>`
+    }
+    adaptationSets += `<AdaptationSet mimeType="${mime}" subsegmentAlignment="true">` +
+      `${representations}</AdaptationSet>`
+  }
+
+  const mpd = `<?xml version="1.0" encoding="UTF-8"?>` +
+    `<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static" minBufferTime="PT1.5S"` +
+    ` profiles="urn:mpeg:dash:profile:isoff-on-demand:2011">` +
+    `<Period>${adaptationSets}</Period></MPD>`
+
+  return mpd
 }
 
 export async function getChannelVideos(channelId: string): Promise<YouTubeVideo[]> {

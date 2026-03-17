@@ -94,6 +94,13 @@ export function InputProvider({ children }: InputProviderProps) {
             actions.next()
           }
           break
+        case 'q':
+        case 'Q':
+          if (actions.quality) {
+            e.preventDefault()
+            actions.quality()
+          }
+          break
         case 'Enter': {
           e.preventDefault()
           if (e.repeat) break
@@ -164,6 +171,11 @@ export function InputProvider({ children }: InputProviderProps) {
         case 'LB':
           if (actions.fullscreen) {
             actions.fullscreen()
+          }
+          break
+        case 'LT':
+          if (actions.quality) {
+            actions.quality()
           }
           break
         case 'SELECT':

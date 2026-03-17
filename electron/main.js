@@ -1,6 +1,8 @@
 import { app, BrowserWindow } from 'electron'
 
 import { createServer } from 'http'
+import https from 'https'
+import http from 'http'
 import { createProxyMiddleware } from 'http-proxy-middleware'
 import express from 'express'
 import { fileURLToPath } from 'url'
@@ -31,7 +33,14 @@ function createProxiedServer() {
       if (req.headers['authorization']) {
         proxyReq.setHeader('Authorization', req.headers['authorization'])
       }
-      proxyReq.setHeader('Origin', 'https://www.youtube.com')
+      const playerUa = req.headers['x-youtube-player-user-agent']
+      if (playerUa) {
+        proxyReq.setHeader('User-Agent', playerUa)
+        proxyReq.removeHeader('X-YouTube-Player-User-Agent')
+        proxyReq.setHeader('Origin', 'https://m.youtube.com')
+      } else {
+        proxyReq.setHeader('Origin', 'https://www.youtube.com')
+      }
     },
     onProxyRes: applyCors,
   }))
@@ -55,6 +64,58 @@ function createProxiedServer() {
     },
     onProxyRes: applyCors,
   }))
+
+  srv.use('/stream-proxy', (req, res) => {
+    const parsed = new URL(req.url || '', 'http://localhost')
+    const targetUrl = parsed.searchParams.get('url')
+    if (!targetUrl) {
+      res.writeHead(400)
+      res.end('Missing url parameter')
+      return
+    }
+
+    const url = new URL(targetUrl)
+    const mod = url.protocol === 'https:' ? https : http
+
+    const upstreamHeaders = {
+      'Origin': 'https://www.youtube.com',
+      'Referer': 'https://www.youtube.com/',
+    }
+    if (req.headers['range']) {
+      upstreamHeaders['Range'] = req.headers['range']
+    }
+
+    const proxyReq = mod.request(targetUrl, {
+      method: req.method || 'GET',
+      headers: upstreamHeaders,
+    }, (proxyRes) => {
+      const responseHeaders = {
+        'Content-Type': proxyRes.headers['content-type'] || 'application/octet-stream',
+        'Access-Control-Allow-Origin': '*',
+      }
+      if (proxyRes.headers['content-length']) {
+        responseHeaders['Content-Length'] = proxyRes.headers['content-length']
+      }
+      if (proxyRes.headers['content-range']) {
+        responseHeaders['Content-Range'] = proxyRes.headers['content-range']
+      }
+      if (proxyRes.headers['accept-ranges']) {
+        responseHeaders['Accept-Ranges'] = proxyRes.headers['accept-ranges']
+      }
+      res.writeHead(proxyRes.statusCode || 200, responseHeaders)
+      proxyRes.pipe(res)
+    })
+
+    proxyReq.on('error', (err) => {
+      console.error('Stream proxy error:', err.message)
+      if (!res.headersSent) {
+        res.writeHead(502)
+        res.end('Proxy error')
+      }
+    })
+
+    proxyReq.end()
+  })
 
   const distPath = join(__dirname, '..', 'dist')
   srv.use(express.static(distPath))

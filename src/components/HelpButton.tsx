@@ -7,6 +7,7 @@ const SHORTCUTS = [
   { action: 'Search', keyboard: 'S', gamepad: 'Y' },
   { action: 'Play / Pause', keyboard: 'Space', gamepad: 'RB' },
   { action: 'Fullscreen', keyboard: 'F', gamepad: 'LB' },
+  { action: 'Quality', keyboard: 'Q', gamepad: 'LT' },
   { action: 'Navigate', keyboard: 'Arrows', gamepad: 'D-Pad' },
   { action: 'Help', keyboard: 'H', gamepad: 'Select' },
 ]
