@@ -29,6 +29,7 @@ export function InputProvider({ children }: InputProviderProps) {
 
     if (isInputFocused) {
       activeEl?.blur()
+      bootstrapNavFocus()
     } else if (locationKeyRef.current !== 'default') {
       navigate(-1)
     }
