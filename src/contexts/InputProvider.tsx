@@ -128,12 +128,10 @@ export function InputProvider({ children }: InputProviderProps) {
         }
       }
 
-      if (button === 'A' || button === 'B') {
-        lastGamepadActionRef.current = Date.now()
-      }
-
       switch (button) {
         case 'A': {
+          if (Date.now() - lastGamepadActionRef.current < 300) break
+          lastGamepadActionRef.current = Date.now()
           const currentEl = document.activeElement as HTMLElement | null
           if (actions.select) {
             actions.select()
@@ -143,6 +141,8 @@ export function InputProvider({ children }: InputProviderProps) {
           break
         }
         case 'B':
+          if (Date.now() - lastGamepadActionRef.current < 300) break
+          lastGamepadActionRef.current = Date.now()
           goBack()
           break
         case 'X':
