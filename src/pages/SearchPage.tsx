@@ -41,7 +41,7 @@ export default function SearchPage() {
 
   const goToChannel = useCallback(() => {
     const activeEl = document.activeElement
-    const resultCard = activeEl?.closest('[data-channel-id]')
+    const resultCard = activeEl?.closest('[data-video-id]')
     const channelId = resultCard?.getAttribute('data-channel-id')
     if (channelId) {
       navigate(`/channel/${channelId}`)

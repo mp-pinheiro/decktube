@@ -229,19 +229,35 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
       if (lockup.contentId?.startsWith('video:')) {
         const videoId = lockup.contentId.replace('video:', '')
         const thumbnail = lockup.thumbnail as { thumbnailViewModel?: { image?: { sources?: Array<{ url?: string }> } } }
-        const metadata = lockup.metadata as { contentMetadataViewModel?: { title?: { content?: string }; subtitle?: string } }
+        const metadata = lockup.metadata as { contentMetadataViewModel?: { title?: { content?: string }; subtitle?: unknown } }
 
         const title = metadata?.contentMetadataViewModel?.title?.content || ''
         const thumbnailUrl = thumbnail?.thumbnailViewModel?.image?.sources?.[0]?.url || ''
-        const subtitle = metadata?.contentMetadataViewModel?.subtitle || ''
+
+        let channelName = ''
+        let channelId = ''
+        const subtitle = metadata?.contentMetadataViewModel?.subtitle as any
+        if (subtitle && typeof subtitle === 'object' && subtitle.runs) {
+          channelName = subtitle.runs.map((r: any) => r.text).join('')
+          for (const run of subtitle.runs) {
+            const browseId = run.onTap?.innertubeCommand?.browseEndpoint?.browseId
+                          || run.navigationEndpoint?.browseEndpoint?.browseId
+            if (browseId && browseId.startsWith('UC')) {
+              channelId = browseId
+              break
+            }
+          }
+        } else if (typeof subtitle === 'string') {
+          channelName = subtitle.split('•')[0]?.trim() || ''
+        }
 
         if (videoId && title) {
           videos.push({
             videoId,
             title,
             thumbnails: thumbnailUrl ? [{ url: thumbnailUrl, width: 320, height: 180 }] : [],
-            channelName: subtitle.split('•')[0]?.trim() || '',
-            channelId: '',
+            channelName,
+            channelId,
           })
         }
       }
