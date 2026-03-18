@@ -145,10 +145,18 @@ async function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      preload: join(__dirname, 'preload.cjs'),
     },
   })
 
   mainWindow.loadURL(url)
+
+  mainWindow.on('focus', () => {
+    mainWindow.webContents.send('window-focus-change', true)
+  })
+  mainWindow.on('blur', () => {
+    mainWindow.webContents.send('window-focus-change', false)
+  })
 
   mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
     const currentOrigin = new URL(url).origin

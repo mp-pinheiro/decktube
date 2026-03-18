@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { initGamepad } from '../lib/gamepad'
+import { initGamepad, setAppFocused } from '../lib/gamepad'
 import { initSpatialNav } from '../lib/spatialNav'
 import { bootstrapNavFocus, waitForBootstrap, initNavFocusCleanup } from '../lib/focusManager'
 import { InputContext, type ButtonAction } from './InputContext'
@@ -210,6 +210,13 @@ export function InputProvider({ children }: InputProviderProps) {
   useEffect(() => {
     return waitForBootstrap()
   }, [location.pathname])
+
+  useEffect(() => {
+    const electronAPI = (window as Window & { electronAPI?: { onWindowFocusChange: (cb: (focused: boolean) => void) => () => void } }).electronAPI
+    if (!electronAPI) return
+    const cleanup = electronAPI.onWindowFocusChange((focused) => setAppFocused(focused))
+    return cleanup
+  }, [])
 
   useEffect(() => {
     const handleFocusBack = () => {

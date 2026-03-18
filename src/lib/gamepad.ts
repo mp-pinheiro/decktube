@@ -20,8 +20,27 @@ type GamepadButtonHandler = (button: string, pressed: boolean) => void
 let animationFrameId: number | null = null
 let buttonHandlers: GamepadButtonHandler[] = []
 const previousButtonStates = new Map<number, boolean[]>()
+let appFocused = true
+let wasFocused = true
+
+export function setAppFocused(focused: boolean) {
+  appFocused = focused
+}
 
 function pollGamepads() {
+  const isFocused = !document.hidden && document.hasFocus() && appFocused
+
+  if (!isFocused) {
+    if (wasFocused) {
+      previousButtonStates.clear()
+      wasFocused = false
+    }
+    animationFrameId = requestAnimationFrame(pollGamepads)
+    return
+  }
+
+  wasFocused = true
+
   const gamepads = navigator.getGamepads()
 
   for (let i = 0; i < gamepads.length; i++) {
