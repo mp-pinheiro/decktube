@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, type ReactNode } from 'react'
+import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { initGamepad, setAppFocused } from '../lib/gamepad'
 import { initSpatialNav } from '../lib/spatialNav'
@@ -16,24 +16,43 @@ export function InputProvider({ children }: InputProviderProps) {
   const locationKeyRef = useRef(location.key)
   const lastGamepadActionRef = useRef(0)
 
+  const [virtualKeyboardOpen, setVirtualKeyboardOpen] = useState(false)
+  const [searchText, setSearchText] = useState('')
+  const virtualKeyboardOpenRef = useRef(false)
+  const searchTextRef = useRef('')
+
+  useEffect(() => { virtualKeyboardOpenRef.current = virtualKeyboardOpen }, [virtualKeyboardOpen])
+  useEffect(() => { searchTextRef.current = searchText }, [searchText])
   useEffect(() => { locationKeyRef.current = location.key }, [location.key])
 
-  const focusSearch = useCallback(() => {
-    const searchInput = document.querySelector('input[type="text"]') as HTMLElement
-    searchInput?.focus()
+  const openVirtualKeyboard = useCallback(() => {
+    setVirtualKeyboardOpen(true)
   }, [])
 
-  const goBack = useCallback(() => {
-    const activeEl = document.activeElement as HTMLElement | null
-    const isInputFocused = activeEl?.tagName === 'INPUT' || activeEl?.tagName === 'TEXTAREA'
+  const closeVirtualKeyboard = useCallback(() => {
+    setVirtualKeyboardOpen(false)
+    forceBootstrapNavFocus()
+  }, [])
 
-    if (isInputFocused) {
-      activeEl?.blur()
+  const submitSearch = useCallback(() => {
+    const text = searchTextRef.current.trim()
+    if (text) {
+      navigate(`/search?q=${encodeURIComponent(text)}`)
+      setVirtualKeyboardOpen(false)
+      setSearchText('')
       forceBootstrapNavFocus()
-    } else if (locationKeyRef.current !== 'default') {
-      navigate(-1)
     }
   }, [navigate])
+
+  const goBack = useCallback(() => {
+    if (virtualKeyboardOpenRef.current) {
+      closeVirtualKeyboard()
+      return
+    }
+    if (locationKeyRef.current !== 'default') {
+      navigate(-1)
+    }
+  }, [navigate, closeVirtualKeyboard])
 
   const registerActions = useCallback((actions: Partial<Record<ButtonAction, () => void>>) => {
     actionsRef.current = actions
@@ -45,12 +64,14 @@ export function InputProvider({ children }: InputProviderProps) {
 
   useEffect(() => {
     const handleKeydown = (e: KeyboardEvent) => {
+      if (virtualKeyboardOpenRef.current) return
+
       const activeEl = document.activeElement as HTMLElement | null
       const isInputFocused = activeEl?.tagName === 'INPUT' || activeEl?.tagName === 'TEXTAREA'
 
       if (!isInputFocused && (e.key === 's' || e.key === 'S')) {
         e.preventDefault()
-        focusSearch()
+        openVirtualKeyboard()
         return
       }
 
@@ -105,7 +126,9 @@ export function InputProvider({ children }: InputProviderProps) {
           e.preventDefault()
           if (e.repeat) break
           if (Date.now() - lastGamepadActionRef.current < 100) break
-          if (actions.select) {
+          if (activeEl?.id === 'search-display') {
+            activeEl.click()
+          } else if (actions.select) {
             actions.select()
           } else {
             activeEl?.click()
@@ -125,8 +148,40 @@ export function InputProvider({ children }: InputProviderProps) {
     const cleanupGamepad = initGamepad((button, pressed) => {
       if (!pressed) return
 
+      if (virtualKeyboardOpenRef.current) {
+        switch (button) {
+          case 'A':
+            window.dispatchEvent(new CustomEvent('vk-press'))
+            break
+          case 'B':
+            closeVirtualKeyboard()
+            break
+          case 'X':
+            window.dispatchEvent(new CustomEvent('vk-backspace'))
+            break
+          case 'Y':
+            window.dispatchEvent(new CustomEvent('vk-space'))
+            break
+          case 'START':
+            window.dispatchEvent(new CustomEvent('vk-submit'))
+            break
+          case 'DPAD_UP':
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp' }))
+            break
+          case 'DPAD_DOWN':
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }))
+            break
+          case 'DPAD_LEFT':
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }))
+            break
+          case 'DPAD_RIGHT':
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }))
+            break
+        }
+        return
+      }
+
       const activeEl = document.activeElement as HTMLElement | null
-      const isInputFocused = activeEl?.tagName === 'INPUT' || activeEl?.tagName === 'TEXTAREA'
       const actions = actionsRef.current
 
       if ((!activeEl || activeEl === document.body) &&
@@ -141,7 +196,9 @@ export function InputProvider({ children }: InputProviderProps) {
           if (Date.now() - lastGamepadActionRef.current < 300) break
           lastGamepadActionRef.current = Date.now()
           const currentEl = document.activeElement as HTMLElement | null
-          if (actions.select) {
+          if (currentEl?.id === 'search-display') {
+            currentEl.click()
+          } else if (actions.select) {
             actions.select()
           } else {
             currentEl?.click()
@@ -159,9 +216,7 @@ export function InputProvider({ children }: InputProviderProps) {
           }
           break
         case 'Y':
-          if (!isInputFocused) {
-            focusSearch()
-          }
+          openVirtualKeyboard()
           break
         case 'RB':
           if (actions.play) {
@@ -205,12 +260,14 @@ export function InputProvider({ children }: InputProviderProps) {
       cleanupGamepad()
       cleanupSpatialNav()
     }
-  }, [focusSearch, goBack])
+  }, [openVirtualKeyboard, closeVirtualKeyboard, goBack])
 
   useEffect(() => {
     const api = (window as any).electronAPI
     if (!api?.onWindowFocusChange) return
-    return api.onWindowFocusChange((focused: boolean) => setAppFocused(focused))
+    return api.onWindowFocusChange((focused: boolean) => {
+      setAppFocused(focused)
+    })
   }, [])
 
   useEffect(() => {
@@ -236,7 +293,16 @@ export function InputProvider({ children }: InputProviderProps) {
   }, [])
 
   return (
-    <InputContext.Provider value={{ registerActions, unregisterActions }}>
+    <InputContext.Provider value={{
+      registerActions,
+      unregisterActions,
+      virtualKeyboardOpen,
+      searchText,
+      openVirtualKeyboard,
+      closeVirtualKeyboard,
+      setSearchText,
+      submitSearch,
+    }}>
       {children}
     </InputContext.Provider>
   )

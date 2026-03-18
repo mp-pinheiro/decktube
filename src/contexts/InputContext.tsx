@@ -5,6 +5,12 @@ export type ButtonAction = 'select' | 'back' | 'channel' | 'search' | 'play' | '
 interface InputContextValue {
   registerActions: (actions: Partial<Record<ButtonAction, () => void>>) => void
   unregisterActions: () => void
+  virtualKeyboardOpen: boolean
+  searchText: string
+  openVirtualKeyboard: () => void
+  closeVirtualKeyboard: () => void
+  setSearchText: (text: string) => void
+  submitSearch: () => void
 }
 
 export const InputContext = createContext<InputContextValue | null>(null)

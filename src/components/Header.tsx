@@ -1,24 +1,16 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { routes } from '../routes'
 import { isAuthenticated, logout } from '../lib/oauth'
 import { Search, PlaySquare } from 'lucide-react'
+import { useInputContext } from '../contexts/InputContext'
 
 export default function Header() {
-  const navigate = useNavigate()
-  const [searchQuery, setSearchQuery] = useState('')
   const authenticated = isAuthenticated()
+  const { searchText, openVirtualKeyboard } = useInputContext()
 
   const handleLogout = () => {
     logout()
     window.location.href = routes.home
-  }
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (searchQuery.trim()) {
-      navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`)
-    }
   }
 
   return (
@@ -30,20 +22,26 @@ export default function Header() {
         <span className="text-lg font-bold tracking-tighter text-white">DeckTube</span>
       </Link>
 
-      <form onSubmit={handleSearch} className="flex-1 max-w-2xl px-8">
+      <div className="flex-1 max-w-2xl px-8">
         <div className="relative group w-full">
-          <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-zinc-500 group-focus-within:text-blue-400 transition-colors">
+          <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-zinc-500">
             <Search size={18} />
           </div>
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search videos..."
-            className="w-full h-10 bg-zinc-900 border border-white/10 rounded-full pl-12 pr-4 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-red-500/50 focus:ring-2 focus:ring-red-500 transition-all"
-          />
+          <div
+            id="search-display"
+            tabIndex={0}
+            role="button"
+            onClick={openVirtualKeyboard}
+            className="w-full h-10 bg-zinc-900 border border-white/10 rounded-full pl-12 pr-4 flex items-center text-sm cursor-pointer focus:outline-none focus:border-red-500/50 focus:ring-2 focus:ring-red-500 transition-all"
+          >
+            {searchText ? (
+              <span className="text-zinc-100 truncate">{searchText}</span>
+            ) : (
+              <span className="text-zinc-500">Search videos...</span>
+            )}
+          </div>
         </div>
-      </form>
+      </div>
 
       <div className="flex items-center gap-3">
         {authenticated ? (

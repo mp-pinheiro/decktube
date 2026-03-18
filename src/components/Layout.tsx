@@ -2,6 +2,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import Header from './Header'
 import { InputProvider } from '../contexts/InputProvider'
 import HelpButton from './HelpButton'
+import VirtualKeyboard from './VirtualKeyboard'
 
 export default function Layout() {
   const location = useLocation()
@@ -18,6 +19,7 @@ export default function Layout() {
         </div>
         {!isWatchPage && <HelpButton />}
       </div>
+      <VirtualKeyboard />
     </InputProvider>
   )
 }

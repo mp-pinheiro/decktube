@@ -22,11 +22,7 @@ export function initSpatialNav() {
     let currentRect = currentEl.getBoundingClientRect()
 
     if (isInputFocused) {
-      if (e.key === 'ArrowDown') {
-        activeEl!.blur()
-      } else {
-        return
-      }
+      return
     } else if (isPlayerFocused) {
       return
     } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {

@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "react-simple-keyboard/build/css/index.css";
 
 [data-nav-focus] {
   outline: 2px solid #ef4444;
@@ -35,4 +36,27 @@
   ::-webkit-scrollbar-thumb:hover {
     @apply bg-zinc-700;
   }
+}
+
+.simple-keyboard.vk-dark {
+  background-color: rgba(0, 0, 0, 0.8);
+  border-radius: 10px;
+  padding: 8px;
+}
+
+.simple-keyboard.vk-dark .hg-button {
+  height: 58px;
+  font-size: 18px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border-bottom-color: rgba(255, 255, 255, 0.05);
+}
+
+.simple-keyboard.vk-dark .hg-button:active {
+  background: #dc2626;
+}
+
+.simple-keyboard.vk-dark .hg-button.hg-keyMarker {
+  box-shadow: 0 0 0 2px #ef4444;
+  background: rgba(255, 255, 255, 0.15);
 }
