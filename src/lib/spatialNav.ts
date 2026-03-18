@@ -1,4 +1,4 @@
-import { setNavFocus, bootstrapNavFocus } from './focusManager'
+import { setNavFocus, bootstrapNavFocus, forceBootstrapNavFocus } from './focusManager'
 
 export function initSpatialNav() {
   const handleKeydown = (e: KeyboardEvent) => {
@@ -84,6 +84,9 @@ export function initSpatialNav() {
     if (bestMatch) {
       e.preventDefault()
       setNavFocus(bestMatch)
+    } else if (isInputFocused) {
+      e.preventDefault()
+      forceBootstrapNavFocus()
     }
   }
 

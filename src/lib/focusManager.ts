@@ -23,6 +23,13 @@ export function bootstrapNavFocus(): boolean {
   return true
 }
 
+export function forceBootstrapNavFocus(): boolean {
+  const target = document.querySelector<HTMLElement>(BOOTSTRAP_SELECTOR)
+  if (!target) return false
+  setNavFocus(target)
+  return true
+}
+
 export function waitForBootstrap(): () => void {
   if (bootstrapNavFocus()) return () => {}
 

@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { initGamepad, setAppFocused } from '../lib/gamepad'
 import { initSpatialNav } from '../lib/spatialNav'
-import { bootstrapNavFocus, waitForBootstrap, initNavFocusCleanup } from '../lib/focusManager'
+import { bootstrapNavFocus, forceBootstrapNavFocus, waitForBootstrap, initNavFocusCleanup } from '../lib/focusManager'
 import { InputContext, type ButtonAction } from './InputContext'
 
 interface InputProviderProps {
@@ -29,7 +29,7 @@ export function InputProvider({ children }: InputProviderProps) {
 
     if (isInputFocused) {
       activeEl?.blur()
-      bootstrapNavFocus()
+      forceBootstrapNavFocus()
     } else if (locationKeyRef.current !== 'default') {
       navigate(-1)
     }

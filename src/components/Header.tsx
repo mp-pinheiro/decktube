@@ -39,11 +39,6 @@ export default function Header() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                e.currentTarget.blur()
-              }
-            }}
             placeholder="Search videos..."
             className="w-full h-10 bg-zinc-900 border border-white/10 rounded-full pl-12 pr-4 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-red-500/50 focus:ring-2 focus:ring-red-500 transition-all"
           />
