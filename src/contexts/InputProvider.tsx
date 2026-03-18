@@ -208,15 +208,14 @@ export function InputProvider({ children }: InputProviderProps) {
   }, [focusSearch, goBack])
 
   useEffect(() => {
-    return waitForBootstrap()
-  }, [location.pathname])
+    const api = (window as any).electronAPI
+    if (!api?.onWindowFocusChange) return
+    return api.onWindowFocusChange((focused: boolean) => setAppFocused(focused))
+  }, [])
 
   useEffect(() => {
-    const electronAPI = (window as Window & { electronAPI?: { onWindowFocusChange: (cb: (focused: boolean) => void) => () => void } }).electronAPI
-    if (!electronAPI) return
-    const cleanup = electronAPI.onWindowFocusChange((focused) => setAppFocused(focused))
-    return cleanup
-  }, [])
+    return waitForBootstrap()
+  }, [location.pathname])
 
   useEffect(() => {
     const handleFocusBack = () => {

@@ -145,7 +145,7 @@ async function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      preload: join(__dirname, 'preload.cjs'),
+      preload: join(__dirname, 'preload.js'),
     },
   })
 
