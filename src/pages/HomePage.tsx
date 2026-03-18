@@ -5,17 +5,29 @@ import type { YouTubeVideo } from '../lib/youtube'
 import { isAuthenticated } from '../lib/oauth'
 import { motion } from 'motion/react'
 import { useInputContext } from '../contexts/InputProvider'
+import { setNavFocus } from '../lib/focusManager'
+
+const PAGE_SIZE = 6
 
 export default function HomePage() {
   const [videos, setVideos] = useState<YouTubeVideo[]>([])
   const [loading, setLoading] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [continuation, setContinuation] = useState<string | null>(null)
+  const [pageIndex, setPageIndex] = useState(0)
   const navigate = useNavigate()
-  const sentinelRef = useRef<HTMLDivElement>(null)
-  const loadMoreRef = useRef<() => Promise<void>>(() => Promise.resolve())
   const { registerActions, unregisterActions } = useInputContext()
+
+  const pageIndexRef = useRef(pageIndex)
+  pageIndexRef.current = pageIndex
+  const videosRef = useRef(videos)
+  videosRef.current = videos
+  const continuationRef = useRef(continuation)
+  continuationRef.current = continuation
+  const pendingFocusIndex = useRef<number | null>(null)
+  const gridRef = useRef<HTMLDivElement>(null)
+
+  const pageVideos = videos.slice(pageIndex * PAGE_SIZE, (pageIndex + 1) * PAGE_SIZE)
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -41,10 +53,9 @@ export default function HomePage() {
   }, [navigate])
 
   const loadMore = useCallback(async () => {
-    if (!continuation || loadingMore) return
-    setLoadingMore(true)
+    if (!continuationRef.current) return
     try {
-      const result = await getHomeFeedContinuation(continuation)
+      const result = await getHomeFeedContinuation(continuationRef.current)
       setVideos(prev => {
         const existingIds = new Set(prev.map(v => v.videoId))
         const newVideos = result.videos.filter(v => !existingIds.has(v.videoId))
@@ -53,36 +64,68 @@ export default function HomePage() {
       setContinuation(result.continuation)
     } catch (err) {
       console.error('Failed to load more:', err)
-    } finally {
-      setLoadingMore(false)
     }
-  }, [continuation, loadingMore])
-
-  useEffect(() => {
-    loadMoreRef.current = loadMore
-  }, [loadMore])
-
-  const loadingRef = useRef(loading)
-  useEffect(() => {
-    loadingRef.current = loading
-  }, [loading])
-
-  useEffect(() => {
-    const sentinel = sentinelRef.current
-    if (!sentinel) return
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && !loadingRef.current) {
-          loadMoreRef.current()
-        }
-      },
-      { rootMargin: '100px' }
-    )
-
-    observer.observe(sentinel)
-    return () => observer.disconnect()
   }, [])
+
+  useEffect(() => {
+    const handleKeydown = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+
+      const grid = gridRef.current
+      if (!grid) return
+
+      const cards = Array.from(grid.querySelectorAll<HTMLElement>('[data-video-id]'))
+      const activeEl = document.activeElement as HTMLElement
+      const cardIndex = cards.indexOf(activeEl)
+      if (cardIndex === -1) return
+
+      const isBottomRow = cardIndex >= 3
+      const isTopRow = cardIndex < 3
+      const col = cardIndex % 3
+
+      if (e.key === 'ArrowDown' && isBottomRow) {
+        e.stopImmediatePropagation()
+        e.preventDefault()
+        const nextStart = (pageIndexRef.current + 1) * PAGE_SIZE
+        if (nextStart < videosRef.current.length) {
+          pendingFocusIndex.current = col
+          setPageIndex(prev => prev + 1)
+        }
+        return
+      }
+
+      if (e.key === 'ArrowUp' && isTopRow && pageIndexRef.current > 0) {
+        e.stopImmediatePropagation()
+        e.preventDefault()
+        pendingFocusIndex.current = 3 + col
+        setPageIndex(prev => prev - 1)
+        return
+      }
+    }
+
+    window.addEventListener('keydown', handleKeydown, true)
+    return () => window.removeEventListener('keydown', handleKeydown, true)
+  }, [])
+
+  useEffect(() => {
+    const targetIndex = pendingFocusIndex.current
+    if (targetIndex === null) return
+    pendingFocusIndex.current = null
+
+    requestAnimationFrame(() => {
+      const grid = gridRef.current
+      if (!grid) return
+      const cards = Array.from(grid.querySelectorAll<HTMLElement>('[data-video-id]'))
+      const target = cards[targetIndex]
+      if (target) setNavFocus(target)
+    })
+  }, [pageIndex])
+
+  useEffect(() => {
+    if ((pageIndex + 1) * PAGE_SIZE >= videos.length && continuation) {
+      loadMore()
+    }
+  }, [pageIndex, videos.length, continuation, loadMore])
 
   const goToVideo = useCallback(() => {
     const activeEl = document.activeElement
@@ -148,25 +191,27 @@ export default function HomePage() {
         </div>
       ) : (
         <>
-          <div className="flex items-center justify-between mb-8 px-2">
+          <div className="flex items-center justify-between mb-4 px-2">
             <h2 className="text-2xl font-bold tracking-tight">Recommended</h2>
           </div>
 
           <motion.div
+            key={pageIndex}
+            ref={gridRef}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="grid grid-cols-3 gap-x-6 gap-y-10"
+            transition={{ duration: 0.3 }}
+            className="grid grid-cols-3 grid-rows-2 gap-x-6 gap-y-4 h-[calc(100vh-12rem)]"
           >
-            {videos.map((video) => (
+            {pageVideos.map((video) => (
               <Link
                 key={video.videoId}
                 to={`/watch/${video.videoId}`}
                 data-video-id={video.videoId}
                 data-channel-id={video.channelId}
-                className="block group cursor-pointer flex flex-col gap-3 outline-none focus:outline-none focus:ring-2 focus:ring-red-500 rounded-2xl"
+                className="group cursor-pointer flex flex-col gap-2 outline-none focus:outline-none focus:ring-2 focus:ring-red-500 rounded-2xl min-h-0"
               >
-                  <div className="relative aspect-video overflow-hidden rounded-2xl bg-zinc-800 border border-white/5 shadow-lg">
+                  <div className="relative flex-1 min-h-0 overflow-hidden rounded-2xl bg-zinc-800 border border-white/5 shadow-lg">
                     <img
                       src={getThumbnailUrl(video)}
                       alt={video.title}
@@ -181,7 +226,7 @@ export default function HomePage() {
                     )}
                   </div>
 
-                  <div className="flex gap-3 px-1">
+                  <div className="flex-shrink-0 flex gap-3 px-1">
                     <div className="flex flex-col gap-1 overflow-hidden">
                       <h3 className="line-clamp-2 text-sm font-semibold text-zinc-100 leading-snug group-hover:text-blue-400 transition-colors">
                         {video.title}
@@ -203,17 +248,8 @@ export default function HomePage() {
                 </Link>
             ))}
           </motion.div>
-
-          {loadingMore && (
-            <div className="flex justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-red-600" />
-            </div>
-          )}
         </>
       )}
-
-      {/* Infinite scroll sentinel - always in DOM */}
-      <div ref={sentinelRef} className="h-20" />
     </div>
   )
 }
