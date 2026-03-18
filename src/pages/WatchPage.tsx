@@ -3,6 +3,7 @@ import HelpButton from '../components/HelpButton'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { MediaPlayer, type MediaPlayerClass, type Representation } from 'dashjs'
 import { getVideoDetails, getPlayerData, generateMpd, type YouTubeVideo } from '../lib/youtube'
+import { savePlaybackPosition, getPlaybackPosition, clearPlaybackPosition } from '../lib/playbackStore'
 import { useInputContext } from '../contexts/InputProvider'
 import QualitySelector, { type QualityOption } from '../components/QualitySelector'
 import PlayerOverlay from '../components/PlayerOverlay'
@@ -62,7 +63,7 @@ export default function WatchPage() {
     }
   }, [])
 
-  const initDash = useCallback((url: string) => {
+  const initDash = useCallback((url: string, vid: string) => {
     if (!videoElRef.current) return
 
     const dp = MediaPlayer().create()
@@ -82,6 +83,10 @@ export default function WatchPage() {
         setDashQualities(buildQualityOptions(reps))
       }
       dp.setVolume(volumeRef.current / 100)
+      const saved = getPlaybackPosition(vid)
+      if (saved !== null && videoElRef.current) {
+        videoElRef.current.currentTime = saved
+      }
       setError(null)
       setLoading(false)
     })
@@ -129,7 +134,7 @@ export default function WatchPage() {
       const blobUrl = URL.createObjectURL(blob)
       blobUrlRef.current = blobUrl
 
-      initDash(blobUrl)
+      initDash(blobUrl, videoId!)
     }
 
     load().catch((err) => {
@@ -140,8 +145,27 @@ export default function WatchPage() {
       }
     })
 
+    const saveInterval = setInterval(() => {
+      const video = videoElRef.current
+      const dp = dashPlayerRef.current
+      if (!video || !dp) return
+      const duration = dp.duration()
+      if (duration > 0) {
+        savePlaybackPosition(videoId!, video.currentTime, duration)
+      }
+    }, 15000)
+
     return () => {
       cancelled = true
+      clearInterval(saveInterval)
+      const video = videoElRef.current
+      const dp = dashPlayerRef.current
+      if (video && dp) {
+        const duration = dp.duration()
+        if (duration > 0) {
+          savePlaybackPosition(videoId!, video.currentTime, duration)
+        }
+      }
       destroyDash()
     }
   }, [videoId, destroyDash, initDash])
@@ -151,13 +175,16 @@ export default function WatchPage() {
     if (!video) return
     const onPlay = () => setPaused(false)
     const onPause = () => setPaused(true)
+    const onEnded = () => { if (videoId) clearPlaybackPosition(videoId) }
     video.addEventListener('play', onPlay)
     video.addEventListener('pause', onPause)
+    video.addEventListener('ended', onEnded)
     return () => {
       video.removeEventListener('play', onPlay)
       video.removeEventListener('pause', onPause)
+      video.removeEventListener('ended', onEnded)
     }
-  }, [])
+  }, [videoId])
 
   const togglePlay = useCallback(() => {
     const video = videoElRef.current
