@@ -2,7 +2,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import HelpButton from '../components/HelpButton'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { MediaPlayer, type MediaPlayerClass, type Representation } from 'dashjs'
-import { getVideoDetails, getPlayerData, generateMpd, type YouTubeVideo } from '../lib/youtube'
+import { getVideoDetails, getPlayerData, generateMpd, type YouTubeVideo, type MuxedFormat } from '../lib/youtube'
 import { savePlaybackPosition, getPlaybackPosition, clearPlaybackPosition } from '../lib/playbackStore'
 import { useInputContext } from '../contexts/InputProvider'
 import QualitySelector, { type QualityOption } from '../components/QualitySelector'
@@ -44,6 +44,7 @@ export default function WatchPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [paused, setPaused] = useState(true)
+  const initTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [playAction, setPlayAction] = useState(0)
@@ -53,6 +54,10 @@ export default function WatchPage() {
   const [qualityAction, setQualityAction] = useState(0)
 
   const destroyDash = useCallback(() => {
+    if (initTimerRef.current) {
+      clearTimeout(initTimerRef.current)
+      initTimerRef.current = null
+    }
     if (dashPlayerRef.current) {
       dashPlayerRef.current.destroy()
       dashPlayerRef.current = null
@@ -77,7 +82,20 @@ export default function WatchPage() {
 
     dp.initialize(videoElRef.current, url, true)
 
+    initTimerRef.current = setTimeout(() => {
+      if (!dp.isReady()) {
+        setError('Player initialization timed out')
+        setLoading(false)
+        dp.destroy()
+        dashPlayerRef.current = null
+      }
+    }, 30000)
+
     dp.on('streamInitialized', () => {
+      if (initTimerRef.current) {
+        clearTimeout(initTimerRef.current)
+        initTimerRef.current = null
+      }
       const reps = dp.getRepresentationsByType('video')
       if (reps?.length) {
         setDashQualities(buildQualityOptions(reps))
@@ -94,12 +112,38 @@ export default function WatchPage() {
     dp.on('error', (e: any) => {
       console.error('dash.js error:', e)
       if (!dp.isReady()) {
+        if (initTimerRef.current) {
+          clearTimeout(initTimerRef.current)
+          initTimerRef.current = null
+        }
         setError('Failed to load video stream')
         setLoading(false)
       }
     })
 
     dashPlayerRef.current = dp
+  }, [])
+
+  const initProgressive = useCallback((format: MuxedFormat, vid: string) => {
+    const video = videoElRef.current
+    if (!video) return
+
+    const proxyUrl = `/stream-proxy?url=${encodeURIComponent(format.url)}`
+    video.src = proxyUrl
+    video.volume = volumeRef.current / 100
+
+    const onLoadedData = () => {
+      const saved = getPlaybackPosition(vid)
+      if (saved !== null) {
+        video.currentTime = saved
+      }
+      video.play().catch(() => {})
+      setError(null)
+      setLoading(false)
+      video.removeEventListener('loadeddata', onLoadedData)
+    }
+    video.addEventListener('loadeddata', onLoadedData)
+    video.load()
   }, [])
 
   useEffect(() => {
@@ -123,18 +167,26 @@ export default function WatchPage() {
 
       setVideoData(details)
 
-      if (playerData.adaptiveFormats.length === 0) {
-        setError('No playable streams found')
-        setLoading(false)
+      const { mpd: mpdXml, representationCount } = generateMpd(playerData.adaptiveFormats)
+
+      if (representationCount > 0) {
+        const blob = new Blob([mpdXml], { type: 'application/dash+xml' })
+        const blobUrl = URL.createObjectURL(blob)
+        blobUrlRef.current = blobUrl
+        initDash(blobUrl, videoId!)
         return
       }
 
-      const mpdXml = generateMpd(playerData.adaptiveFormats)
-      const blob = new Blob([mpdXml], { type: 'application/dash+xml' })
-      const blobUrl = URL.createObjectURL(blob)
-      blobUrlRef.current = blobUrl
+      // DASH formats lack byte ranges -- fall back to muxed progressive stream
+      if (playerData.muxedFormats.length > 0) {
+        const best = playerData.muxedFormats.reduce((a, b) => a.bitrate > b.bitrate ? a : b)
+        console.warn('DASH unavailable, using progressive fallback:', best.qualityLabel || best.itag)
+        initProgressive(best, videoId!)
+        return
+      }
 
-      initDash(blobUrl, videoId!)
+      setError('No playable streams found')
+      setLoading(false)
     }
 
     load().catch((err) => {
@@ -147,10 +199,10 @@ export default function WatchPage() {
 
     const saveInterval = setInterval(() => {
       const video = videoElRef.current
+      if (!video) return
       const dp = dashPlayerRef.current
-      if (!video || !dp) return
-      const duration = dp.duration()
-      if (duration > 0) {
+      const duration = dp ? dp.duration() : video.duration
+      if (duration > 0 && !isNaN(duration)) {
         savePlaybackPosition(videoId!, video.currentTime, duration)
       }
     }, 15000)
@@ -160,15 +212,13 @@ export default function WatchPage() {
       clearInterval(saveInterval)
       const video = videoElRef.current
       const dp = dashPlayerRef.current
-      if (video && dp) {
-        const duration = dp.duration()
-        if (duration > 0) {
-          savePlaybackPosition(videoId!, video.currentTime, duration)
-        }
+      const duration = dp ? dp.duration() : (video ? video.duration : 0)
+      if (video && duration > 0 && !isNaN(duration)) {
+        savePlaybackPosition(videoId!, video.currentTime, duration)
       }
       destroyDash()
     }
-  }, [videoId, destroyDash, initDash])
+  }, [videoId, destroyDash, initDash, initProgressive])
 
   useEffect(() => {
     const video = videoElRef.current
@@ -210,6 +260,8 @@ export default function WatchPage() {
     setVolumeState(clamped)
     if (dashPlayerRef.current) {
       dashPlayerRef.current.setVolume(clamped / 100)
+    } else if (videoElRef.current) {
+      videoElRef.current.volume = clamped / 100
     }
     setVolumeAction(c => c + 1)
   }, [])

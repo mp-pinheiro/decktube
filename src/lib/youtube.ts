@@ -563,8 +563,19 @@ export interface AdaptiveFormat {
   initRange?: { start: string; end: string }
 }
 
+export interface MuxedFormat {
+  itag: number
+  url: string
+  mimeType: string
+  bitrate: number
+  width?: number
+  height?: number
+  qualityLabel?: string
+}
+
 export interface PlayerData {
   adaptiveFormats: AdaptiveFormat[]
+  muxedFormats: MuxedFormat[]
 }
 
 export async function getPlayerData(videoId: string): Promise<PlayerData> {
@@ -620,7 +631,20 @@ export async function getPlayerData(videoId: string): Promise<PlayerData> {
       initRange: f.initRange,
     }))
 
-  return { adaptiveFormats }
+  const rawMuxed = (streamingData?.formats as any[]) || []
+  const muxedFormats: MuxedFormat[] = rawMuxed
+    .filter((f: any) => f.url)
+    .map((f: any) => ({
+      itag: f.itag,
+      url: f.url,
+      mimeType: f.mimeType || '',
+      bitrate: f.bitrate || 0,
+      width: f.width,
+      height: f.height,
+      qualityLabel: f.qualityLabel,
+    }))
+
+  return { adaptiveFormats, muxedFormats }
 }
 
 function escapeXml(s: string): string {
@@ -639,14 +663,16 @@ function formatIsoDuration(ms: number): string {
   return dur
 }
 
-export function generateMpd(formats: AdaptiveFormat[]): string {
+export function generateMpd(formats: AdaptiveFormat[]): { mpd: string; representationCount: number } {
   const groups = new Map<string, AdaptiveFormat[]>()
+  let representationCount = 0
   for (const f of formats) {
     if (!f.url) continue
     if (!f.indexRange || !f.initRange) continue
     const baseMime = f.mimeType.split(';')[0].trim()
     if (!groups.has(baseMime)) groups.set(baseMime, [])
     groups.get(baseMime)!.push(f)
+    representationCount++
   }
 
   let maxDurationMs = 0
@@ -687,7 +713,7 @@ export function generateMpd(formats: AdaptiveFormat[]): string {
     ` profiles="urn:mpeg:dash:profile:isoff-on-demand:2011">` +
     `<Period>${adaptationSets}</Period></MPD>`
 
-  return mpd
+  return { mpd, representationCount }
 }
 
 export async function getChannelVideos(channelId: string): Promise<YouTubeVideo[]> {
