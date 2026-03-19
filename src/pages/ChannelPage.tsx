@@ -34,12 +34,11 @@ export default function ChannelPage() {
 
   const goToVideo = useCallback(() => {
     const activeEl = document.activeElement
-    const videoCard = activeEl?.closest('[data-video-id]')
-    const videoId = videoCard?.getAttribute('data-video-id')
-    if (videoId) {
-      navigate(`/watch/${videoId}`)
+    const link = activeEl?.closest('a[data-video-id]') as HTMLElement | null
+    if (link) {
+      link.click()
     }
-  }, [navigate])
+  }, [])
 
   const goToChannel = useCallback(() => {
     const activeEl = document.activeElement

@@ -33,12 +33,11 @@ export default function SearchPage() {
 
   const goToVideo = useCallback(() => {
     const activeEl = document.activeElement
-    const resultCard = activeEl?.closest('[data-video-id]')
-    const videoId = resultCard?.getAttribute('data-video-id')
-    if (videoId) {
-      navigate(`/watch/${videoId}`)
+    const link = activeEl?.closest('a[data-video-id]') as HTMLElement | null
+    if (link) {
+      link.click()
     }
-  }, [navigate])
+  }, [])
 
   const goToChannel = useCallback(() => {
     const activeEl = document.activeElement

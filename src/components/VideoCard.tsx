@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import type { YouTubeVideo } from '../lib/youtube'
 import { formatDuration, formatViews, getThumbnailUrl } from '../lib/format'
+import { recordHistory } from '../lib/historyStore'
 
 interface VideoCardProps {
   video: YouTubeVideo
@@ -15,15 +16,18 @@ export default function VideoCard({ video, showChannel = true, showDuration = tr
       data-video-id={video.videoId}
       data-channel-id={video.channelId}
       className="group cursor-pointer flex flex-col gap-2 outline-none focus:outline-none focus:ring-2 focus:ring-red-500 rounded-2xl min-h-0"
+      onClick={() => recordHistory(video, 0, 0)}
     >
       <div className="relative flex-1 min-h-0 overflow-hidden rounded-2xl bg-zinc-800 border border-white/5 shadow-lg">
-        <img
-          src={getThumbnailUrl(video)}
-          alt={video.title}
-          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-          loading="lazy"
-          referrerPolicy="no-referrer"
-        />
+        {getThumbnailUrl(video) && (
+          <img
+            src={getThumbnailUrl(video)}
+            alt={video.title}
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+            loading="lazy"
+            referrerPolicy="no-referrer"
+          />
+        )}
         {showDuration && video.duration && video.duration > 0 && (
           <div className="absolute bottom-2 right-2 rounded-sm bg-black/80 px-1.5 py-0.5 text-[10px] font-bold text-white backdrop-blur-sm">
             {formatDuration(video.duration)}
