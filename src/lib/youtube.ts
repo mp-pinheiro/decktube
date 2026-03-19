@@ -237,23 +237,40 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
         let channelName = ''
         let channelId = ''
         let duration: number | undefined
+        let viewCount: number | undefined
+        let publishedTimeText = ''
         const subtitle = metadata?.contentMetadataViewModel?.subtitle as any
         if (subtitle && typeof subtitle === 'object' && subtitle.runs) {
-          channelName = subtitle.runs.map((r: any) => r.text).join('')
           for (const run of subtitle.runs) {
+            const text = run.text?.trim()
+            if (!text || text === '•') continue
+
             const browseId = run.onTap?.innertubeCommand?.browseEndpoint?.browseId
                           || run.navigationEndpoint?.browseEndpoint?.browseId
             if (browseId && browseId.startsWith('UC')) {
               channelId = browseId
-              break
+              channelName = text
+              continue
             }
-          }
-          for (const run of subtitle.runs) {
-            const text = run.text?.trim()
-            const match = text?.match(/(\d+:\d{2}(?::\d{2})?)/)
-            if (match) {
-              duration = parseDuration(match[1])
-              break
+
+            const durationMatch = text.match(/(\d+:\d{2}(?::\d{2})?)/)
+            if (durationMatch) {
+              duration = parseDuration(durationMatch[1])
+              continue
+            }
+
+            if (text.includes('views') || text.includes('watching')) {
+              viewCount = parseViewCount(text)
+              continue
+            }
+
+            if (!channelName) {
+              channelName = text
+              continue
+            }
+
+            if (!publishedTimeText && text.length > 1) {
+              publishedTimeText = text
             }
           }
         } else if (typeof subtitle === 'string') {
@@ -268,6 +285,8 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
             channelName,
             channelId,
             duration,
+            viewCount,
+            publishedTimeText: publishedTimeText || undefined,
           })
         }
       }
@@ -297,13 +316,15 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
         const lines = tile.metadata?.tileMetadataRenderer?.lines || []
         let channelName = ''
         let viewCountText = ''
-        
+        let publishedTimeText = ''
+
         for (const line of lines) {
           const items = line.lineRenderer?.items || []
           for (const lineItem of items) {
             const text = extractText(lineItem.lineItemRenderer?.text)
             if (!channelName) { channelName = text }
             else if (text.includes('views') || text.includes('watching')) { viewCountText = text }
+            else if (!publishedTimeText && text.length > 1) { publishedTimeText = text }
           }
         }
         let channelId = ''
@@ -325,6 +346,7 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
           channelId,
           duration,
           viewCount: viewCountText ? parseViewCount(viewCountText) : undefined,
+          publishedTimeText: publishedTimeText || undefined,
         })
       }
     } else {
