@@ -236,6 +236,7 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
 
         let channelName = ''
         let channelId = ''
+        let duration: number | undefined
         const subtitle = metadata?.contentMetadataViewModel?.subtitle as any
         if (subtitle && typeof subtitle === 'object' && subtitle.runs) {
           channelName = subtitle.runs.map((r: any) => r.text).join('')
@@ -244,6 +245,14 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
                           || run.navigationEndpoint?.browseEndpoint?.browseId
             if (browseId && browseId.startsWith('UC')) {
               channelId = browseId
+              break
+            }
+          }
+          for (const run of subtitle.runs) {
+            const text = run.text?.trim()
+            const match = text?.match(/(\d+:\d{2}(?::\d{2})?)/)
+            if (match) {
+              duration = parseDuration(match[1])
               break
             }
           }
@@ -258,6 +267,7 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
             thumbnails: thumbnailUrl ? [{ url: thumbnailUrl, width: 320, height: 180 }] : [],
             channelName,
             channelId,
+            duration,
           })
         }
       }
@@ -273,7 +283,17 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
              url: t.url, width: t.width, height: t.height
           }))
         }
-        
+
+        let duration: number | undefined
+        const overlays = tile.header?.tileHeaderRenderer?.thumbnailOverlays || []
+        for (const overlay of overlays) {
+          const durationText = overlay.thumbnailOverlayTimeStatusRenderer?.text?.simpleText
+          if (durationText) {
+            duration = parseDuration(durationText)
+            break
+          }
+        }
+
         const lines = tile.metadata?.tileMetadataRenderer?.lines || []
         let channelName = ''
         let viewCountText = ''
@@ -303,6 +323,7 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
           thumbnails,
           channelName,
           channelId,
+          duration,
           viewCount: viewCountText ? parseViewCount(viewCountText) : undefined,
         })
       }

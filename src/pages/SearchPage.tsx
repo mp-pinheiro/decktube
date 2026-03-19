@@ -3,7 +3,7 @@ import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { search, type YouTubeSearchResult } from '../lib/youtube'
 import { motion } from 'motion/react'
 import { useInputContext } from '../contexts/InputProvider'
-import { formatViews, getThumbnailUrl } from '../lib/format'
+import { formatViews, formatDuration, getThumbnailUrl } from '../lib/format'
 
 export default function SearchPage() {
   const [searchParams] = useSearchParams()
@@ -91,6 +91,11 @@ export default function SearchPage() {
                   loading="lazy"
                   referrerPolicy="no-referrer"
                 />
+                {video.duration && video.duration > 0 && (
+                  <div className="absolute bottom-2 right-2 rounded-sm bg-black/80 px-1.5 py-0.5 text-[10px] font-bold text-white backdrop-blur-sm">
+                    {formatDuration(video.duration)}
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-col py-1 gap-1">
