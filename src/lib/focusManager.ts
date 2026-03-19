@@ -1,5 +1,5 @@
 export const BOOTSTRAP_SELECTOR =
-  '[data-video-id], #video-player-container, main button:not([disabled]), main a[href]:not([tabindex="-1"])'
+  '[data-video-id], #video-player-container, main button:not([disabled]):not([tabindex="-1"]), main a[href]:not([tabindex="-1"])'
 
 const NAV_ATTR = 'data-nav-focus'
 
