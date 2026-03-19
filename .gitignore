@@ -51,3 +51,4 @@ release/
 repos
 data
 scripts
+squashfs-root/

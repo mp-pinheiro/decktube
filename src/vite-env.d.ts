@@ -1,4 +1,3 @@
-declare const __APP_VERSION__: string
 declare module 'simple-keyboard-key-navigation'
 
 interface UpdateStatusPayload {
@@ -19,6 +18,7 @@ interface ElectronAPI {
 }
 
 declare global {
+  const __APP_VERSION__: string
   interface Window {
     electronAPI?: ElectronAPI
   }
