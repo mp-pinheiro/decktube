@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { AnimatePresence, motion } from 'motion/react'
+import { pushInputLayer } from '../lib/inputLayer'
 
 type BannerState =
   | { phase: 'hidden' }
@@ -9,7 +9,8 @@ type BannerState =
 
 export default function UpdateBanner() {
   const [state, setState] = useState<BannerState>({ phase: 'hidden' })
-  const dismissTimerRef = useRef<ReturnType<typeof setTimeout>>()
+  const modalRef = useRef<HTMLDivElement>(null)
+  const primaryBtnRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     const api = window.electronAPI
@@ -29,19 +30,52 @@ export default function UpdateBanner() {
             version: payload.version ?? (prev.phase === 'available' ? prev.version : ''),
           }))
           break
-        case 'error':
+        case 'not-available':
           setState({ phase: 'hidden' })
+          break
+        case 'error':
+          console.error('[UpdateBanner] Update error:', payload.message)
           break
       }
     })
   }, [])
 
   useEffect(() => {
-    clearTimeout(dismissTimerRef.current)
-    if (state.phase === 'available') {
-      dismissTimerRef.current = setTimeout(() => setState({ phase: 'hidden' }), 15_000)
+    if (state.phase === 'hidden') return
+    return pushInputLayer('update-modal', (intent, event) => {
+      if (intent === 'back') {
+        if (state.phase === 'downloading') return true
+        setState({ phase: 'hidden' })
+        return true
+      }
+      if (intent === 'select') {
+        const active = document.activeElement as HTMLElement | null
+        active?.click()
+        return true
+      }
+      if (intent === 'nav_left' || intent === 'nav_right' || intent === 'nav_up' || intent === 'nav_down') {
+        event?.preventDefault()
+        const buttons = modalRef.current?.querySelectorAll<HTMLElement>('button')
+        if (!buttons || buttons.length <= 1) return true
+        const active = document.activeElement as HTMLElement
+        const idx = Array.from(buttons).indexOf(active as HTMLButtonElement)
+        if (idx === -1) {
+          buttons[0].focus()
+        } else if (intent === 'nav_right' || intent === 'nav_down') {
+          buttons[(idx + 1) % buttons.length].focus()
+        } else {
+          buttons[(idx - 1 + buttons.length) % buttons.length].focus()
+        }
+        return true
+      }
+      return true
+    })
+  }, [state.phase])
+
+  useEffect(() => {
+    if (state.phase === 'available' || state.phase === 'downloaded') {
+      requestAnimationFrame(() => primaryBtnRef.current?.focus())
     }
-    return () => clearTimeout(dismissTimerRef.current)
   }, [state.phase])
 
   const handleDownload = useCallback(() => {
@@ -57,83 +91,88 @@ export default function UpdateBanner() {
     setState({ phase: 'hidden' })
   }, [])
 
-  const visible = state.phase !== 'hidden'
+  if (state.phase === 'hidden') return null
 
   return (
-    <AnimatePresence>
-      {visible && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 20 }}
-          transition={{ duration: 0.2 }}
-          className="fixed bottom-6 left-6 z-40 flex items-center gap-3 bg-zinc-900/95 backdrop-blur-md border border-white/10 rounded-xl px-4 py-3 shadow-2xl"
-        >
-          {state.phase === 'available' && (
-            <>
-              <svg className="w-5 h-5 text-green-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      onClick={handleDismiss}
+    >
+      <div
+        ref={modalRef}
+        tabIndex={-1}
+        onClick={e => e.stopPropagation()}
+        className="bg-zinc-900 border border-white/10 rounded-2xl p-6 w-[380px] max-w-[90vw] shadow-2xl focus:outline-none"
+      >
+        {state.phase === 'available' && (
+          <>
+            <div className="flex items-center gap-3 mb-3">
+              <svg className="w-6 h-6 text-green-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0 0l-4-4m4 4l4-4" />
               </svg>
-              <span className="text-sm text-zinc-200">
-                Update <span className="font-semibold text-white">{state.version}</span> available
-              </span>
+              <h2 className="text-lg font-bold text-white">Update Available</h2>
+            </div>
+            <p className="text-sm text-zinc-400 mb-5">
+              Version <span className="font-semibold text-white">{state.version}</span> is ready to download.
+            </p>
+            <div className="flex gap-3">
               <button
-                tabIndex={0}
+                onClick={handleDismiss}
+                className="flex-1 px-4 py-2 text-sm font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+              >
+                Cancel
+              </button>
+              <button
+                ref={primaryBtnRef}
                 onClick={handleDownload}
-                className="ml-1 px-3 py-1 text-sm font-medium bg-red-600 hover:bg-red-500 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                className="flex-1 px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-500 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
               >
                 Download
               </button>
-              <button
-                tabIndex={0}
-                onClick={handleDismiss}
-                className="p-1 text-zinc-500 hover:text-zinc-300 focus:outline-none focus:ring-2 focus:ring-red-500 rounded"
-                aria-label="Dismiss"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </>
-          )}
+            </div>
+          </>
+        )}
 
-          {state.phase === 'downloading' && (
-            <>
-              <svg className="w-5 h-5 text-blue-400 shrink-0 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        {state.phase === 'downloading' && (
+          <>
+            <div className="flex items-center gap-3 mb-3">
+              <svg className="w-6 h-6 text-blue-400 shrink-0 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0 0l-4-4m4 4l4-4" />
               </svg>
-              <div className="flex flex-col gap-1 min-w-[140px]">
-                <span className="text-sm text-zinc-300">Downloading update...</span>
-                <div className="h-1.5 bg-zinc-700 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-red-500 rounded-full transition-all duration-300"
-                    style={{ width: `${Math.round(state.percent)}%` }}
-                  />
-                </div>
-              </div>
-              <span className="text-xs text-zinc-500 tabular-nums">{Math.round(state.percent)}%</span>
-            </>
-          )}
+              <h2 className="text-lg font-bold text-white">Downloading Update</h2>
+            </div>
+            <p className="text-sm text-zinc-400 mb-4">Please wait while the update is downloaded...</p>
+            <div className="h-2 bg-zinc-700 rounded-full overflow-hidden mb-2">
+              <div
+                className="h-full bg-red-500 rounded-full transition-all duration-300"
+                style={{ width: `${Math.round(state.percent)}%` }}
+              />
+            </div>
+            <p className="text-xs text-zinc-500 text-right tabular-nums">{Math.round(state.percent)}%</p>
+          </>
+        )}
 
-          {state.phase === 'downloaded' && (
-            <>
-              <svg className="w-5 h-5 text-green-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        {state.phase === 'downloaded' && (
+          <>
+            <div className="flex items-center gap-3 mb-3">
+              <svg className="w-6 h-6 text-green-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
-              <span className="text-sm text-zinc-200">
-                <span className="font-semibold text-white">{state.version}</span> ready to install
-              </span>
-              <button
-                tabIndex={0}
-                onClick={handleInstall}
-                className="ml-1 px-3 py-1 text-sm font-medium bg-green-600 hover:bg-green-500 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
-              >
-                Restart
-              </button>
-            </>
-          )}
-        </motion.div>
-      )}
-    </AnimatePresence>
+              <h2 className="text-lg font-bold text-white">Update Ready</h2>
+            </div>
+            <p className="text-sm text-zinc-400 mb-5">
+              Version <span className="font-semibold text-white">{state.version}</span> has been downloaded. Restart to apply.
+            </p>
+            <button
+              ref={primaryBtnRef}
+              onClick={handleInstall}
+              className="w-full px-4 py-2 text-sm font-medium bg-green-600 hover:bg-green-500 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+            >
+              Restart
+            </button>
+          </>
+        )}
+      </div>
+    </div>
   )
 }
