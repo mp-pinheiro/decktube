@@ -9,6 +9,7 @@ export type InputIntent =
   | 'next'
   | 'prevTab'
   | 'nextTab'
+  | 'mode'
   | 'help'
   | 'nav_up'
   | 'nav_down'
@@ -26,6 +27,7 @@ const KEYBOARD_MAP: Record<string, InputIntent> = {
   n: 'next',
   '[': 'prevTab',
   ']': 'nextTab',
+  m: 'mode',
   h: 'help',
   arrowup: 'nav_up',
   arrowdown: 'nav_down',
@@ -41,6 +43,7 @@ const GAMEPAD_MAP: Record<string, InputIntent> = {
   LB: 'fullscreen',
   RB: 'nextTab',
   LT: 'quality',
+  START: 'mode',
   SELECT: 'help',
   DPAD_UP: 'nav_up',
   DPAD_DOWN: 'nav_down',

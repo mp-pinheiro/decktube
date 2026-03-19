@@ -153,6 +153,12 @@ export function InputProvider({ children }: InputProviderProps) {
             actions.nextTab()
           }
           return true
+        case 'mode':
+          if (actions.mode) {
+            event?.preventDefault()
+            actions.mode()
+          }
+          return true
         case 'help':
           // Handled by help-toggle layer
           return false

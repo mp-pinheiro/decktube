@@ -45,6 +45,11 @@ export function getHistory(): YouTubeVideo[] {
   return loadEntries().map(e => e.video)
 }
 
+export function removeFromHistory(videoId: string): void {
+  const entries = loadEntries().filter(e => e.video.videoId !== videoId)
+  storeEntries(entries)
+}
+
 export function clearHistory(): void {
   try {
     localStorage.removeItem(STORAGE_KEY)

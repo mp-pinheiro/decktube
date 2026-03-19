@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { getHomeFeed, getHomeFeedContinuation, getSubscriptionsFeed, getSubscriptionsFeedContinuation } from '../lib/youtube'
 import type { YouTubeVideo } from '../lib/youtube'
 import { isAuthenticated } from '../lib/oauth'
-import { getHistory } from '../lib/historyStore'
+import { getHistory, removeFromHistory, clearHistory } from '../lib/historyStore'
+import { forceBootstrapNavFocus } from '../lib/focusManager'
 import { useInputContext } from '../contexts/InputProvider'
 import PagedVideoGrid from '../components/PagedVideoGrid'
 import TabBar from '../components/TabBar'
+import ActionMenu from '../components/ActionMenu'
 
 const TABS = [
   { id: 'recommended', label: 'Recommended' },
@@ -35,6 +37,9 @@ export default function HomePage() {
     subscriptions: emptyTabState(),
     history: emptyTabState(),
   })
+
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [menuVideoId, setMenuVideoId] = useState<string | null>(null)
 
   const activeTabRef = useRef(activeTab)
   activeTabRef.current = activeTab
@@ -158,15 +163,39 @@ export default function HomePage() {
     }
   }, [navigate])
 
+  const openModeMenu = useCallback(() => {
+    const videoId = (document.activeElement?.closest('[data-video-id]') as HTMLElement | null)
+      ?.getAttribute('data-video-id')
+    if (!videoId) return
+    setMenuVideoId(videoId)
+    setMenuOpen(true)
+  }, [])
+
+  const handleMenuAction = useCallback((actionId: string) => {
+    if (actionId === 'remove' && menuVideoId) {
+      removeFromHistory(menuVideoId)
+    } else if (actionId === 'clear') {
+      clearHistory()
+    }
+    setMenuOpen(false)
+    setMenuVideoId(null)
+    fetchHistory()
+    requestAnimationFrame(() => forceBootstrapNavFocus())
+  }, [menuVideoId, fetchHistory])
+
   useEffect(() => {
-    registerActions({
+    const actions: Record<string, () => void> = {
       select: goToVideo,
       channel: goToChannel,
       prevTab: () => cycleTab(-1),
       nextTab: () => cycleTab(1),
-    })
+    }
+    if (activeTab === 'history') {
+      actions.mode = openModeMenu
+    }
+    registerActions(actions)
     return () => unregisterActions()
-  }, [registerActions, unregisterActions, goToVideo, goToChannel, cycleTab])
+  }, [registerActions, unregisterActions, goToVideo, goToChannel, cycleTab, activeTab, openModeMenu])
 
   return (
     <div>
@@ -196,7 +225,7 @@ export default function HomePage() {
 
       {activeTab === 'history' && (
         <PagedVideoGrid
-          key="history"
+          key={`history-${state.videos.length}`}
           videos={state.videos}
           loading={state.loading}
           error={state.error}
@@ -204,6 +233,16 @@ export default function HomePage() {
           onLoadMore={loadMore}
         />
       )}
+
+      <ActionMenu
+        open={menuOpen}
+        onClose={() => { setMenuOpen(false); setMenuVideoId(null) }}
+        items={[
+          { id: 'remove', label: 'Remove from history' },
+          { id: 'clear', label: 'Clear all history', danger: true },
+        ]}
+        onSelect={handleMenuAction}
+      />
     </div>
   )
 }
