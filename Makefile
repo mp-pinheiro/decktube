@@ -9,6 +9,7 @@ GRID_DIR = /home/deck/.local/share/Steam/userdata/$(STEAM_USER_ID)/config/grid
 .PHONY: assets build bump release deploy deploy-art
 
 assets:
+	rm -f steam-assets/*.png
 	convert -size 3840x1240 xc:'#0d0d1a' \
 	  -fill 'rgba(160,0,255,0.15)' -draw 'circle 2200,800 2900,800' \
 	  -fill 'rgba(100,0,200,0.10)' -draw 'circle 900,400 1600,400' \
@@ -43,6 +44,8 @@ assets:
 	  -font DejaVu-Sans-Bold -pointsize 130 -fill white \
 	  -annotate +230+168 'DECKTUBE' \
 	  steam-assets/logo.png
+	mkdir -p build
+	convert steam-assets/icon.png -resize 512x512 build/icon.png
 
 build:
 	npm run build:electron
