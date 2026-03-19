@@ -143,6 +143,8 @@ export function InputProvider({ children }: InputProviderProps) {
             activeEl.click()
           } else if (actions.select && activeEl?.closest('[data-video-id]')) {
             actions.select()
+          } else if (actions.play && activeEl && !['A', 'BUTTON', 'INPUT', 'TEXTAREA'].includes(activeEl.tagName)) {
+            actions.play()
           } else {
             activeEl?.click()
           }
@@ -213,6 +215,8 @@ export function InputProvider({ children }: InputProviderProps) {
             currentEl.click()
           } else if (actions.select && currentEl?.closest('[data-video-id]')) {
             actions.select()
+          } else if (actions.play && currentEl && !['A', 'BUTTON', 'INPUT', 'TEXTAREA'].includes(currentEl.tagName)) {
+            actions.play()
           } else {
             currentEl?.click()
           }
@@ -232,9 +236,7 @@ export function InputProvider({ children }: InputProviderProps) {
           openVirtualKeyboard()
           break
         case 'RB':
-          if (actions.play) {
-            actions.play()
-          } else if (actions.nextTab) {
+          if (actions.nextTab) {
             actions.nextTab()
           }
           break

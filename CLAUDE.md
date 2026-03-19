@@ -31,13 +31,14 @@ ALL FEATURES MUST adhere to the Steam Deck controller UX. You are not building a
 
 - Clean, minimal interface optimized for Steam Deck viewport
 - Controls (every keyboard shortcut has a gamepad equivalent):
-  - Enter / A: Select
+  - Enter / A: Select / Play-Pause
   - Escape / B: Back/blur
   - C / X: Go to channel
   - S / Y: Focus search
-  - Space / RB: Play/Pause
+  - Space: Play/Pause
   - F / LB: Fullscreen
   - Q / LT: Quality selector
+  - [ ] / LB RB: Switch tab
   - Arrows / D-Pad: Navigate UI / Seek & Volume on watch page
   - H / Select: Open help modal
 

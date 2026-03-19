@@ -1,11 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 
 const SHORTCUTS = [
-  { action: 'Select', keyboard: 'Enter', gamepad: 'A' },
+  { action: 'Select / Play', keyboard: 'Enter / Space', gamepad: 'A' },
   { action: 'Back', keyboard: 'Esc', gamepad: 'B' },
   { action: 'Channel', keyboard: 'C', gamepad: 'X' },
   { action: 'Search', keyboard: 'S', gamepad: 'Y' },
-  { action: 'Play / Pause', keyboard: 'Space', gamepad: 'RB' },
   { action: 'Fullscreen', keyboard: 'F', gamepad: 'LB' },
   { action: 'Quality', keyboard: 'Q', gamepad: 'LT' },
   { action: 'Switch Tab', keyboard: '[ / ]', gamepad: 'LB / RB' },
