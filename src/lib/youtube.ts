@@ -716,6 +716,34 @@ export function generateMpd(formats: AdaptiveFormat[]): { mpd: string; represent
   return { mpd, representationCount }
 }
 
+export async function getSubscriptionsFeed(): Promise<HomeFeedResult> {
+  const token = await getToken()
+  if (!token) return { videos: [], continuation: null }
+
+  const response = await youtubeiRequest('browse', {
+    context: { client: TV_CLIENT_CONFIG },
+    browseId: 'FEsubscriptions',
+  }, true)
+
+  const videos = extractVideosFromRenderers(response).map(v => ({ ...v, type: 'video' as const }))
+  const continuation = extractContinuationToken(response)
+  return { videos, continuation }
+}
+
+export async function getSubscriptionsFeedContinuation(continuationToken: string): Promise<HomeFeedResult> {
+  const token = await getToken()
+  if (!token) return { videos: [], continuation: null }
+
+  const response = await youtubeiRequest('browse', {
+    context: { client: TV_CLIENT_CONFIG },
+    continuation: continuationToken,
+  }, true)
+
+  const videos = extractVideosFromRenderers(response).map(v => ({ ...v, type: 'video' as const }))
+  const continuation = extractContinuationToken(response)
+  return { videos, continuation }
+}
+
 export async function getChannelVideos(channelId: string): Promise<YouTubeVideo[]> {
   try {
     const response = (await youtubeiRequest('browse', {

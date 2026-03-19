@@ -1,8 +1,9 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getHomeFeed, getHomeFeedContinuation } from '../lib/youtube'
+import { getHomeFeed, getHomeFeedContinuation, getSubscriptionsFeed, getSubscriptionsFeedContinuation } from '../lib/youtube'
 import type { YouTubeVideo } from '../lib/youtube'
 import { isAuthenticated } from '../lib/oauth'
+import { getHistory } from '../lib/historyStore'
 import { useInputContext } from '../contexts/InputProvider'
 import PagedVideoGrid from '../components/PagedVideoGrid'
 import TabBar from '../components/TabBar'
@@ -65,18 +66,59 @@ export default function HomePage() {
     }
   }, [])
 
+  const fetchSubscriptions = useCallback(async () => {
+    setTabStates(prev => ({
+      ...prev,
+      subscriptions: { ...prev.subscriptions, loading: true, error: null, fetched: true },
+    }))
+    try {
+      const result = await getSubscriptionsFeed()
+      setTabStates(prev => ({
+        ...prev,
+        subscriptions: { ...prev.subscriptions, videos: result.videos, continuation: result.continuation, loading: false },
+      }))
+    } catch (err) {
+      setTabStates(prev => ({
+        ...prev,
+        subscriptions: { ...prev.subscriptions, error: err instanceof Error ? err.message : 'Failed to load subscriptions', loading: false },
+      }))
+    }
+  }, [])
+
+  const fetchHistory = useCallback(() => {
+    setTabStates(prev => ({
+      ...prev,
+      history: { ...prev.history, videos: getHistory(), continuation: null, fetched: true },
+    }))
+  }, [])
+
   useEffect(() => {
     if (activeTab === 'recommended' && !tabStates.recommended.fetched) {
       fetchRecommended()
     }
-  }, [activeTab, tabStates.recommended.fetched, fetchRecommended])
+    if (activeTab === 'subscriptions' && !tabStates.subscriptions.fetched) {
+      fetchSubscriptions()
+    }
+    if (activeTab === 'history') {
+      fetchHistory()
+    }
+  }, [activeTab, tabStates.recommended.fetched, fetchRecommended, tabStates.subscriptions.fetched, fetchSubscriptions, fetchHistory])
 
   const loadMore = useCallback(async () => {
     const tab = activeTabRef.current
     const cont = tabStates[tab]?.continuation
-    if (!cont || tab !== 'recommended') return
+    if (!cont) return
+
+    const fetchContinuation = tab === 'recommended'
+      ? getHomeFeedContinuation
+      : tab === 'subscriptions'
+        ? getSubscriptionsFeedContinuation
+        : null
+
+    if (!fetchContinuation) return
+
     try {
-      const result = await getHomeFeedContinuation(cont)
+      const result = await fetchContinuation(cont)
       setTabStates(prev => {
         const existing = prev[tab]
         const existingIds = new Set(existing.videos.map(v => v.videoId))
@@ -101,12 +143,11 @@ export default function HomePage() {
 
   const goToVideo = useCallback(() => {
     const activeEl = document.activeElement
-    const videoCard = activeEl?.closest('[data-video-id]')
-    const videoId = videoCard?.getAttribute('data-video-id')
-    if (videoId) {
-      navigate(`/watch/${videoId}`)
+    const link = activeEl?.closest('a[data-video-id]') as HTMLElement | null
+    if (link) {
+      link.click()
     }
-  }, [navigate])
+  }, [])
 
   const goToChannel = useCallback(() => {
     const activeEl = document.activeElement
@@ -143,15 +184,25 @@ export default function HomePage() {
       )}
 
       {activeTab === 'subscriptions' && (
-        <div className="flex items-center justify-center py-20">
-          <div className="text-zinc-400">Subscriptions coming soon</div>
-        </div>
+        <PagedVideoGrid
+          key="subscriptions"
+          videos={state.videos}
+          loading={state.loading}
+          error={state.error}
+          continuation={state.continuation}
+          onLoadMore={loadMore}
+        />
       )}
 
       {activeTab === 'history' && (
-        <div className="flex items-center justify-center py-20">
-          <div className="text-zinc-400">History coming soon</div>
-        </div>
+        <PagedVideoGrid
+          key="history"
+          videos={state.videos}
+          loading={state.loading}
+          error={state.error}
+          continuation={null}
+          onLoadMore={loadMore}
+        />
       )}
     </div>
   )
