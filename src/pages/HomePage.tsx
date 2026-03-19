@@ -1,131 +1,103 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { getHomeFeed, getHomeFeedContinuation } from '../lib/youtube'
 import type { YouTubeVideo } from '../lib/youtube'
 import { isAuthenticated } from '../lib/oauth'
-import { motion } from 'motion/react'
 import { useInputContext } from '../contexts/InputProvider'
-import { setNavFocus } from '../lib/focusManager'
+import PagedVideoGrid from '../components/PagedVideoGrid'
+import TabBar from '../components/TabBar'
 
-const PAGE_SIZE = 6
+const TABS = [
+  { id: 'recommended', label: 'Recommended' },
+  { id: 'subscriptions', label: 'Subscriptions' },
+  { id: 'history', label: 'History' },
+]
+
+interface TabState {
+  videos: YouTubeVideo[]
+  loading: boolean
+  error: string | null
+  continuation: string | null
+  fetched: boolean
+}
+
+function emptyTabState(): TabState {
+  return { videos: [], loading: false, error: null, continuation: null, fetched: false }
+}
 
 export default function HomePage() {
-  const [videos, setVideos] = useState<YouTubeVideo[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [continuation, setContinuation] = useState<string | null>(null)
-  const [pageIndex, setPageIndex] = useState(0)
   const navigate = useNavigate()
   const { registerActions, unregisterActions } = useInputContext()
+  const [activeTab, setActiveTab] = useState('recommended')
+  const [tabStates, setTabStates] = useState<Record<string, TabState>>({
+    recommended: emptyTabState(),
+    subscriptions: emptyTabState(),
+    history: emptyTabState(),
+  })
 
-  const pageIndexRef = useRef(pageIndex)
-  pageIndexRef.current = pageIndex
-  const videosRef = useRef(videos)
-  videosRef.current = videos
-  const continuationRef = useRef(continuation)
-  continuationRef.current = continuation
-  const pendingFocusIndex = useRef<number | null>(null)
-  const gridRef = useRef<HTMLDivElement>(null)
+  const activeTabRef = useRef(activeTab)
+  activeTabRef.current = activeTab
 
-  const pageVideos = videos.slice(pageIndex * PAGE_SIZE, (pageIndex + 1) * PAGE_SIZE)
+  const state = tabStates[activeTab]
 
   useEffect(() => {
     if (!isAuthenticated()) {
       navigate('/login', { replace: true })
-      return
     }
-
-    async function loadVideos() {
-      setLoading(true)
-      setError(null)
-      try {
-        const result = await getHomeFeed()
-        setVideos(result.videos)
-        setContinuation(result.continuation)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load videos')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    loadVideos()
   }, [navigate])
 
-  const loadMore = useCallback(async () => {
-    if (!continuationRef.current) return
+  const fetchRecommended = useCallback(async () => {
+    setTabStates(prev => ({
+      ...prev,
+      recommended: { ...prev.recommended, loading: true, error: null, fetched: true },
+    }))
     try {
-      const result = await getHomeFeedContinuation(continuationRef.current)
-      setVideos(prev => {
-        const existingIds = new Set(prev.map(v => v.videoId))
+      const result = await getHomeFeed()
+      setTabStates(prev => ({
+        ...prev,
+        recommended: { ...prev.recommended, videos: result.videos, continuation: result.continuation, loading: false },
+      }))
+    } catch (err) {
+      setTabStates(prev => ({
+        ...prev,
+        recommended: { ...prev.recommended, error: err instanceof Error ? err.message : 'Failed to load videos', loading: false },
+      }))
+    }
+  }, [])
+
+  useEffect(() => {
+    if (activeTab === 'recommended' && !tabStates.recommended.fetched) {
+      fetchRecommended()
+    }
+  }, [activeTab, tabStates.recommended.fetched, fetchRecommended])
+
+  const loadMore = useCallback(async () => {
+    const tab = activeTabRef.current
+    const cont = tabStates[tab]?.continuation
+    if (!cont || tab !== 'recommended') return
+    try {
+      const result = await getHomeFeedContinuation(cont)
+      setTabStates(prev => {
+        const existing = prev[tab]
+        const existingIds = new Set(existing.videos.map(v => v.videoId))
         const newVideos = result.videos.filter(v => !existingIds.has(v.videoId))
-        return [...prev, ...newVideos]
+        return {
+          ...prev,
+          [tab]: { ...existing, videos: [...existing.videos, ...newVideos], continuation: result.continuation },
+        }
       })
-      setContinuation(result.continuation)
     } catch (err) {
       console.error('Failed to load more:', err)
     }
-  }, [])
+  }, [tabStates])
 
-  useEffect(() => {
-    const handleKeydown = (e: KeyboardEvent) => {
-      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
-
-      const grid = gridRef.current
-      if (!grid) return
-
-      const cards = Array.from(grid.querySelectorAll<HTMLElement>('[data-video-id]'))
-      const activeEl = document.activeElement as HTMLElement
-      const cardIndex = cards.indexOf(activeEl)
-      if (cardIndex === -1) return
-
-      const isBottomRow = cardIndex >= 3
-      const isTopRow = cardIndex < 3
-      const col = cardIndex % 3
-
-      if (e.key === 'ArrowDown' && isBottomRow) {
-        e.stopImmediatePropagation()
-        e.preventDefault()
-        const nextStart = (pageIndexRef.current + 1) * PAGE_SIZE
-        if (nextStart < videosRef.current.length) {
-          pendingFocusIndex.current = col
-          setPageIndex(prev => prev + 1)
-        }
-        return
-      }
-
-      if (e.key === 'ArrowUp' && isTopRow && pageIndexRef.current > 0) {
-        e.stopImmediatePropagation()
-        e.preventDefault()
-        pendingFocusIndex.current = 3 + col
-        setPageIndex(prev => prev - 1)
-        return
-      }
-    }
-
-    window.addEventListener('keydown', handleKeydown, true)
-    return () => window.removeEventListener('keydown', handleKeydown, true)
-  }, [])
-
-  useEffect(() => {
-    const targetIndex = pendingFocusIndex.current
-    if (targetIndex === null) return
-    pendingFocusIndex.current = null
-
-    requestAnimationFrame(() => {
-      const grid = gridRef.current
-      if (!grid) return
-      const cards = Array.from(grid.querySelectorAll<HTMLElement>('[data-video-id]'))
-      const target = cards[targetIndex]
-      if (target) setNavFocus(target)
+  const cycleTab = useCallback((direction: number) => {
+    setActiveTab(prev => {
+      const idx = TABS.findIndex(t => t.id === prev)
+      const next = (idx + direction + TABS.length) % TABS.length
+      return TABS[next].id
     })
-  }, [pageIndex])
-
-  useEffect(() => {
-    if ((pageIndex + 1) * PAGE_SIZE >= videos.length && continuation) {
-      loadMore()
-    }
-  }, [pageIndex, videos.length, continuation, loadMore])
+  }, [])
 
   const goToVideo = useCallback(() => {
     const activeEl = document.activeElement
@@ -149,106 +121,37 @@ export default function HomePage() {
     registerActions({
       select: goToVideo,
       channel: goToChannel,
+      prevTab: () => cycleTab(-1),
+      nextTab: () => cycleTab(1),
     })
     return () => unregisterActions()
-  }, [registerActions, unregisterActions, goToVideo, goToChannel])
-
-  const formatDuration = (seconds: number | undefined): string => {
-    if (seconds === undefined || seconds === 0) return ''
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, '0')}`
-  }
-
-  const formatViews = (views: number | undefined): string => {
-    if (!views) return ''
-    if (views >= 1000000) return `${(views / 1000000).toFixed(1)}M views`
-    if (views >= 1000) return `${(views / 1000).toFixed(1)}K views`
-    return `${views} views`
-  }
-
-  const getThumbnailUrl = (video: YouTubeVideo): string => {
-    const mediumThumb = video.thumbnails.find(t => t.width === 320)
-    const highThumb = video.thumbnails.find(t => t.width === 480)
-    return mediumThumb?.url || highThumb?.url || video.thumbnails[0]?.url || ''
-  }
+  }, [registerActions, unregisterActions, goToVideo, goToChannel, cycleTab])
 
   return (
     <div>
-      {error && (
-        <div className="bg-red-900/30 border border-red-700 rounded-2xl p-4 text-red-300 mb-6">
-          {error}
+      <TabBar tabs={TABS} activeTab={activeTab} onTabChange={setActiveTab} />
+
+      {activeTab === 'recommended' && (
+        <PagedVideoGrid
+          key="recommended"
+          videos={state.videos}
+          loading={state.loading}
+          error={state.error}
+          continuation={state.continuation}
+          onLoadMore={loadMore}
+        />
+      )}
+
+      {activeTab === 'subscriptions' && (
+        <div className="flex items-center justify-center py-20">
+          <div className="text-zinc-400">Subscriptions coming soon</div>
         </div>
       )}
 
-      {loading ? (
+      {activeTab === 'history' && (
         <div className="flex items-center justify-center py-20">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-red-600" />
+          <div className="text-zinc-400">History coming soon</div>
         </div>
-      ) : videos.length === 0 ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="text-zinc-400">No videos found</div>
-        </div>
-      ) : (
-        <>
-          <div className="flex items-center justify-between mb-4 px-2">
-            <h2 className="text-2xl font-bold tracking-tight">Recommended</h2>
-          </div>
-
-          <motion.div
-            key={pageIndex}
-            ref={gridRef}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-            className="grid grid-cols-3 grid-rows-2 gap-x-6 gap-y-4 h-[calc(100vh-12rem)]"
-          >
-            {pageVideos.map((video) => (
-              <Link
-                key={video.videoId}
-                to={`/watch/${video.videoId}`}
-                data-video-id={video.videoId}
-                data-channel-id={video.channelId}
-                className="group cursor-pointer flex flex-col gap-2 outline-none focus:outline-none focus:ring-2 focus:ring-red-500 rounded-2xl min-h-0"
-              >
-                  <div className="relative flex-1 min-h-0 overflow-hidden rounded-2xl bg-zinc-800 border border-white/5 shadow-lg">
-                    <img
-                      src={getThumbnailUrl(video)}
-                      alt={video.title}
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                    />
-                    {video.duration && video.duration > 0 && (
-                      <div className="absolute bottom-2 right-2 rounded-sm bg-black/80 px-1.5 py-0.5 text-[10px] font-bold text-white backdrop-blur-sm">
-                        {formatDuration(video.duration)}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex-shrink-0 flex gap-3 px-1">
-                    <div className="flex flex-col gap-1 overflow-hidden">
-                      <h3 className="line-clamp-2 text-sm font-semibold text-zinc-100 leading-snug group-hover:text-blue-400 transition-colors">
-                        {video.title}
-                      </h3>
-                      <div className="flex flex-col text-xs text-zinc-400">
-                        <span>{video.channelName}</span>
-                        <div className="flex items-center gap-1">
-                          <span>{video.viewCount ? formatViews(video.viewCount) : ''}</span>
-                          {video.publishedTimeText && (
-                            <>
-                              <span className="text-[8px] opacity-50">•</span>
-                              <span>{video.publishedTimeText}</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </Link>
-            ))}
-          </motion.div>
-        </>
       )}
     </div>
   )

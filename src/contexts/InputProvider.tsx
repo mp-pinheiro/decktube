@@ -123,13 +123,25 @@ export function InputProvider({ children }: InputProviderProps) {
             actions.quality()
           }
           break
+        case '[':
+          if (actions.prevTab) {
+            e.preventDefault()
+            actions.prevTab()
+          }
+          break
+        case ']':
+          if (actions.nextTab) {
+            e.preventDefault()
+            actions.nextTab()
+          }
+          break
         case 'Enter': {
           e.preventDefault()
           if (e.repeat) break
           if (Date.now() - lastGamepadActionRef.current < 100) break
           if (activeEl?.id === 'search-display') {
             activeEl.click()
-          } else if (actions.select) {
+          } else if (actions.select && activeEl?.closest('[data-video-id]')) {
             actions.select()
           } else {
             activeEl?.click()
@@ -199,7 +211,7 @@ export function InputProvider({ children }: InputProviderProps) {
           const currentEl = document.activeElement as HTMLElement | null
           if (currentEl?.id === 'search-display') {
             currentEl.click()
-          } else if (actions.select) {
+          } else if (actions.select && currentEl?.closest('[data-video-id]')) {
             actions.select()
           } else {
             currentEl?.click()
@@ -222,11 +234,15 @@ export function InputProvider({ children }: InputProviderProps) {
         case 'RB':
           if (actions.play) {
             actions.play()
+          } else if (actions.nextTab) {
+            actions.nextTab()
           }
           break
         case 'LB':
           if (actions.fullscreen) {
             actions.fullscreen()
+          } else if (actions.prevTab) {
+            actions.prevTab()
           }
           break
         case 'LT':

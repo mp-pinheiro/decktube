@@ -3,6 +3,7 @@ import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { search, type YouTubeSearchResult } from '../lib/youtube'
 import { motion } from 'motion/react'
 import { useInputContext } from '../contexts/InputProvider'
+import { formatViews, getThumbnailUrl } from '../lib/format'
 
 export default function SearchPage() {
   const [searchParams] = useSearchParams()
@@ -56,19 +57,6 @@ export default function SearchPage() {
     return () => unregisterActions()
   }, [registerActions, unregisterActions, goToVideo, goToChannel])
 
-  const formatViewCount = (views: number | undefined): string => {
-    if (!views) return ''
-    if (views >= 1000000) return `${(views / 1000000).toFixed(1)}M views`
-    if (views >= 1000) return `${(views / 1000).toFixed(1)}K views`
-    return `${views} views`
-  }
-
-  const getThumbnailUrl = (video: YouTubeSearchResult): string => {
-    const mediumThumb = video.thumbnails.find(t => t.width === 320)
-    const highThumb = video.thumbnails.find(t => t.width === 480)
-    return mediumThumb?.url || highThumb?.url || video.thumbnails[0]?.url || ''
-  }
-
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold text-zinc-100">Search results for "{query}"</h1>
@@ -114,7 +102,7 @@ export default function SearchPage() {
                 <span className="text-sm font-medium text-zinc-300">{video.channelName}</span>
 
                 <div className="flex items-center gap-2 text-sm text-zinc-400">
-                  <span>{formatViewCount(video.viewCount)}</span>
+                  <span>{formatViews(video.viewCount)}</span>
                   {video.publishedTimeText && (
                     <>
                       <span className="text-[8px] opacity-50">•</span>

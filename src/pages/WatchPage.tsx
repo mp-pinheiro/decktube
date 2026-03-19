@@ -7,6 +7,7 @@ import { savePlaybackPosition, getPlaybackPosition, clearPlaybackPosition } from
 import { useInputContext } from '../contexts/InputProvider'
 import QualitySelector, { type QualityOption } from '../components/QualitySelector'
 import PlayerOverlay from '../components/PlayerOverlay'
+import { formatViews } from '../lib/format'
 
 function heightToLabel(height: number): string {
   if (height >= 2160) return '4K'
@@ -454,9 +455,3 @@ export default function WatchPage() {
   )
 }
 
-function formatViews(views: number | undefined): string {
-  if (!views) return ''
-  if (views >= 1000000) return `${(views / 1000000).toFixed(1)}M views`
-  if (views >= 1000) return `${(views / 1000).toFixed(1)}K views`
-  return `${views} views`
-}
