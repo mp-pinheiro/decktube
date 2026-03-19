@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import type { YouTubeVideo } from '../lib/youtube'
 import { formatDuration, formatViews, getThumbnailUrl } from '../lib/format'
 import { recordHistory } from '../lib/historyStore'
+import { getPlaybackPosition } from '../lib/playbackStore'
 
 interface VideoCardProps {
   video: YouTubeVideo
@@ -10,6 +11,9 @@ interface VideoCardProps {
 }
 
 export default function VideoCard({ video, showChannel = true, showDuration = true }: VideoCardProps) {
+  const position = getPlaybackPosition(video.videoId)
+  const progress = position && video.duration ? position / video.duration : 0
+
   return (
     <Link
       to={`/watch/${video.videoId}`}
@@ -31,6 +35,11 @@ export default function VideoCard({ video, showChannel = true, showDuration = tr
         {showDuration && video.duration && video.duration > 0 && (
           <div className="absolute bottom-2 right-2 rounded-sm bg-black/80 px-1.5 py-0.5 text-[10px] font-bold text-white backdrop-blur-sm">
             {formatDuration(video.duration)}
+          </div>
+        )}
+        {progress > 0 && (
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
+            <div className="h-full bg-red-600" style={{ width: `${progress * 100}%` }} />
           </div>
         )}
       </div>
