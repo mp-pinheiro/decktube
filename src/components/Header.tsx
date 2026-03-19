@@ -15,7 +15,7 @@ export default function Header() {
 
   return (
     <header className="fixed top-0 left-0 right-0 h-16 bg-zinc-950/80 backdrop-blur-xl border-b border-white/5 flex items-center justify-between px-6 z-30">
-      <Link to={routes.home} tabIndex={-1} className="flex items-center gap-2">
+      <Link to={routes.home} id="home-link" tabIndex={0} className="flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-red-500 rounded-lg">
         <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center shadow-[0_0_15px_rgba(220,38,38,0.4)]">
           <PlaySquare size={18} className="text-white fill-white" />
         </div>
