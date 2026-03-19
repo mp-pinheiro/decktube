@@ -241,10 +241,12 @@ export default function WatchPage() {
     if (!video) return
     if (video.paused) {
       video.play()
+        .then(() => setPlayAction(c => c + 1))
+        .catch(() => {})
     } else {
       video.pause()
+      setPlayAction(c => c + 1)
     }
-    setPlayAction(c => c + 1)
   }, [])
 
   const seek = useCallback((delta: number) => {

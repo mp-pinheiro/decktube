@@ -96,6 +96,7 @@ export function InputProvider({ children }: InputProviderProps) {
           }
           break
         case ' ':
+          if (e.repeat) break
           if (actions.play) {
             e.preventDefault()
             actions.play()
