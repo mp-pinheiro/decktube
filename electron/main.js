@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, ipcMain } from 'electron'
 
 import { createServer } from 'http'
 import https from 'https'
@@ -169,16 +169,60 @@ async function createWindow() {
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
 }
 
+function sendUpdateStatus(payload) {
+  mainWindow?.webContents.send('update-status', payload)
+}
+
+async function initAutoUpdater() {
+  if (isDev) return
+
+  try {
+    const { autoUpdater } = await import('electron-updater')
+    autoUpdater.autoDownload = false
+    autoUpdater.autoInstallOnAppQuit = true
+
+    autoUpdater.on('checking-for-update', () => {
+      sendUpdateStatus({ status: 'checking' })
+    })
+
+    autoUpdater.on('update-available', (info) => {
+      sendUpdateStatus({ status: 'available', version: info.version })
+    })
+
+    autoUpdater.on('update-not-available', () => {
+      sendUpdateStatus({ status: 'not-available' })
+    })
+
+    autoUpdater.on('download-progress', (progress) => {
+      sendUpdateStatus({
+        status: 'downloading',
+        percent: progress.percent,
+        bytesPerSecond: progress.bytesPerSecond,
+        transferred: progress.transferred,
+        total: progress.total,
+      })
+    })
+
+    autoUpdater.on('update-downloaded', (info) => {
+      sendUpdateStatus({ status: 'downloaded', version: info.version })
+    })
+
+    autoUpdater.on('error', (err) => {
+      sendUpdateStatus({ status: 'error', message: err?.message })
+    })
+
+    ipcMain.handle('update-download', () => autoUpdater.downloadUpdate())
+    ipcMain.handle('update-install', () => autoUpdater.quitAndInstall())
+
+    autoUpdater.checkForUpdates().catch(() => {})
+  } catch {
+    // updater unavailable, continue
+  }
+}
+
 app.whenReady().then(async () => {
   await createWindow()
-  if (!isDev) {
-    try {
-      const { autoUpdater } = await import('electron-updater')
-      autoUpdater.checkForUpdatesAndNotify().catch(() => {})
-    } catch {
-      // updater unavailable, continue
-    }
-  }
+  await initAutoUpdater()
 })
 
 app.on('window-all-closed', () => {

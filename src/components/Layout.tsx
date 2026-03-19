@@ -2,6 +2,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import Header from './Header'
 import { InputProvider } from '../contexts/InputProvider'
 import HelpButton from './HelpButton'
+import UpdateBanner from './UpdateBanner'
 import VirtualKeyboard from './VirtualKeyboard'
 
 export default function Layout() {
@@ -20,6 +21,7 @@ export default function Layout() {
         {!isWatchPage && <HelpButton />}
       </div>
       <VirtualKeyboard />
+      <UpdateBanner />
     </InputProvider>
   )
 }

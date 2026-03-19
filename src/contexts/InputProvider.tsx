@@ -250,7 +250,7 @@ export function InputProvider({ children }: InputProviderProps) {
   }, [openVirtualKeyboard, closeVirtualKeyboard, goBack])
 
   useEffect(() => {
-    const api = (window as any).electronAPI
+    const api = window.electronAPI
     if (!api?.onWindowFocusChange) return
     return api.onWindowFocusChange((focused: boolean) => {
       setAppFocused(focused)
