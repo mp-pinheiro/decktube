@@ -46,7 +46,7 @@ export default function VideoCard({ video, showChannel = true, showDuration = tr
 
       <div className="flex-shrink-0 flex gap-3 px-1">
         <div className="flex flex-col gap-1 overflow-hidden">
-          <h3 className="line-clamp-2 text-sm font-semibold text-zinc-100 leading-snug group-hover:text-blue-400 transition-colors">
+          <h3 className="line-clamp-2 text-sm font-semibold text-zinc-100 leading-snug group-hover:text-blue-400 transition-colors min-h-[2.4rem]">
             {video.title}
           </h3>
           <div className="flex flex-col text-xs text-zinc-400">
