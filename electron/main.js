@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 
 import { createServer } from 'http'
 import https from 'https'
@@ -12,6 +12,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const isDev = !!process.env.VITE_DEV_SERVER_URL
 
 let mainWindow
+let proxyServer = null
 
 const CORS = {
   'access-control-allow-origin': '*',
@@ -123,19 +124,50 @@ function createProxiedServer() {
     res.sendFile('index.html', { root: distPath })
   })
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const httpServer = createServer(srv)
-    httpServer.listen(19384, '127.0.0.1', () => {
-      const { port } = httpServer.address()
-      resolve(`http://127.0.0.1:${port}`)
+    proxyServer = httpServer
+
+    httpServer.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.log('[Server] Port 19384 in use, retrying with random port...')
+        httpServer.listen(0, '127.0.0.1')
+      } else {
+        reject(err)
+      }
     })
+
+    httpServer.on('listening', () => {
+      const { port } = httpServer.address()
+      const url = `http://127.0.0.1:${port}`
+      console.log(`[Server] Listening on ${url}`)
+      resolve(url)
+    })
+
+    httpServer.listen(19384, '127.0.0.1')
   })
 }
 
 async function createWindow() {
-  const url = isDev
-    ? process.env.VITE_DEV_SERVER_URL
-    : await createProxiedServer()
+  let url
+  if (isDev) {
+    url = process.env.VITE_DEV_SERVER_URL
+  } else {
+    try {
+      const serverReady = createProxiedServer()
+      let timeoutId
+      const timeout = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Server startup timed out after 10s')), 10_000)
+      })
+      url = await Promise.race([serverReady, timeout])
+      clearTimeout(timeoutId)
+    } catch (err) {
+      console.error('[Server] Failed to start:', err?.message)
+      dialog.showErrorBox('DeckTube - Startup Error', `Could not start local server:\n${err?.message}`)
+      app.quit()
+      return
+    }
+  }
 
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -150,6 +182,19 @@ async function createWindow() {
   })
 
   mainWindow.loadURL(url)
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    console.log('[Window] Page loaded')
+  })
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+    console.error(`[Window] Page failed to load: ${errorCode} ${errorDescription}`)
+  })
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error(`[Window] Renderer crashed: ${details.reason}`)
+  })
+  mainWindow.webContents.on('console-message', (_event, level, message) => {
+    if (level >= 2) console.error(`[Renderer] ${message}`)
+  })
 
   mainWindow.on('focus', () => {
     mainWindow.webContents.send('window-focus-change', true)
@@ -170,59 +215,83 @@ async function createWindow() {
 }
 
 function sendUpdateStatus(payload) {
-  mainWindow?.webContents.send('update-status', payload)
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-status', payload)
+  }
 }
 
 async function initAutoUpdater() {
   if (isDev) return
 
+  let autoUpdater
   try {
-    const { autoUpdater } = await import('electron-updater')
-    autoUpdater.autoDownload = false
-    autoUpdater.autoInstallOnAppQuit = true
-
-    autoUpdater.on('checking-for-update', () => {
-      sendUpdateStatus({ status: 'checking' })
-    })
-
-    autoUpdater.on('update-available', (info) => {
-      sendUpdateStatus({ status: 'available', version: info.version })
-    })
-
-    autoUpdater.on('update-not-available', () => {
-      sendUpdateStatus({ status: 'not-available' })
-    })
-
-    autoUpdater.on('download-progress', (progress) => {
-      sendUpdateStatus({
-        status: 'downloading',
-        percent: progress.percent,
-        bytesPerSecond: progress.bytesPerSecond,
-        transferred: progress.transferred,
-        total: progress.total,
-      })
-    })
-
-    autoUpdater.on('update-downloaded', (info) => {
-      sendUpdateStatus({ status: 'downloaded', version: info.version })
-    })
-
-    autoUpdater.on('error', (err) => {
-      sendUpdateStatus({ status: 'error', message: err?.message })
-    })
-
-    ipcMain.handle('update-download', () => autoUpdater.downloadUpdate())
-    ipcMain.handle('update-install', () => autoUpdater.quitAndInstall())
-
-    autoUpdater.checkForUpdates().catch(() => {})
-  } catch {
-    // updater unavailable, continue
+    const mod = await import('electron-updater')
+    autoUpdater = mod.autoUpdater ?? mod.default?.autoUpdater
+    if (!autoUpdater) {
+      console.error('[Updater] autoUpdater is undefined after import')
+      return
+    }
+  } catch (err) {
+    console.error('[Updater] Failed to load electron-updater:', err?.message)
+    return
   }
+
+  autoUpdater.autoDownload = false
+  autoUpdater.autoInstallOnAppQuit = true
+  autoUpdater.allowPrerelease = true
+  autoUpdater.logger = console
+
+  console.log('[Updater] Checking for updates...')
+
+  autoUpdater.on('checking-for-update', () => {
+    sendUpdateStatus({ status: 'checking' })
+  })
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('[Updater] Update available:', info.version)
+    sendUpdateStatus({ status: 'available', version: info.version })
+  })
+
+  autoUpdater.on('update-not-available', () => {
+    console.log('[Updater] No update available')
+    sendUpdateStatus({ status: 'not-available' })
+  })
+
+  autoUpdater.on('download-progress', (progress) => {
+    sendUpdateStatus({
+      status: 'downloading',
+      percent: progress.percent,
+      bytesPerSecond: progress.bytesPerSecond,
+      transferred: progress.transferred,
+      total: progress.total,
+    })
+  })
+
+  autoUpdater.on('update-downloaded', (info) => {
+    sendUpdateStatus({ status: 'downloaded', version: info.version })
+  })
+
+  autoUpdater.on('error', (err) => {
+    console.error('[Updater] Error:', err?.message)
+    sendUpdateStatus({ status: 'error', message: err?.message })
+  })
+
+  ipcMain.handle('update-download', () => autoUpdater.downloadUpdate())
+  ipcMain.handle('update-install', async () => {
+    if (proxyServer) {
+      await new Promise(resolve => proxyServer.close(resolve))
+    }
+    autoUpdater.quitAndInstall()
+  })
+
+  autoUpdater.checkForUpdates().catch((e) => {
+    console.error('[Updater] Check failed:', e?.message)
+  })
 }
 
 app.whenReady().then(async () => {
   await createWindow()
-  await initAutoUpdater()
+  initAutoUpdater()
 })
 
 app.on('window-all-closed', () => {
