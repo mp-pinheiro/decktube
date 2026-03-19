@@ -15,10 +15,10 @@ export default function VideoCard({ video, showChannel = true, showDuration = tr
       to={`/watch/${video.videoId}`}
       data-video-id={video.videoId}
       data-channel-id={video.channelId}
-      className="group cursor-pointer flex flex-col gap-2 outline-none focus:outline-none focus:ring-2 focus:ring-red-500 rounded-2xl min-h-0"
+      className="group cursor-pointer flex flex-col gap-2 outline-none focus:outline-none focus:ring-2 focus:ring-red-500 rounded-2xl"
       onClick={() => recordHistory(video, 0, 0)}
     >
-      <div className="relative flex-1 min-h-0 overflow-hidden rounded-2xl bg-zinc-800 border border-white/5 shadow-lg">
+      <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-zinc-800 border border-white/5 shadow-lg">
         {getThumbnailUrl(video) && (
           <img
             src={getThumbnailUrl(video)}

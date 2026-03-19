@@ -129,7 +129,7 @@ export default function PagedVideoGrid({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="grid grid-cols-3 grid-rows-2 gap-x-6 gap-y-4 h-[calc(100vh-12rem)]"
+      className="grid grid-cols-3 grid-rows-2 gap-x-6 gap-y-4 h-[calc(100vh-12rem)] items-start"
     >
       {pageVideos.map((video) => (
         <VideoCard key={video.videoId} video={video} showChannel={showChannel} />
