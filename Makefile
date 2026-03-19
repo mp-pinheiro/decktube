@@ -9,11 +9,12 @@ GRID_DIR = /home/deck/.local/share/Steam/userdata/$(STEAM_USER_ID)/config/grid
 .PHONY: assets build bump release deploy deploy-art
 
 assets:
-	rm -f steam-assets/*.png
+	rm -f steam-assets/*.png steam-assets/*.jpg
 	convert -size 3840x1240 xc:'#0d0d1a' \
 	  -fill 'rgba(160,0,255,0.15)' -draw 'circle 2200,800 2900,800' \
 	  -fill 'rgba(100,0,200,0.10)' -draw 'circle 900,400 1600,400' \
 	  steam-assets/background.png
+	convert steam-assets/background.png steam-assets/background.jpg
 	convert -size 256x256 xc:none \
 	  -fill '#cc0000' -draw 'roundrectangle 8,8 248,248 30,30' \
 	  -fill white -draw 'polygon 80,60 80,196 196,128' \
@@ -75,3 +76,4 @@ deploy-art:
 	scp steam-assets/icon.png       $(DECK_HOST):$(GRID_DIR)/$(STEAM_GAME_ID)_icon.png
 	scp steam-assets/logo.png       $(DECK_HOST):$(GRID_DIR)/$(STEAM_GAME_ID)_logo.png
 	scp steam-assets/background.png $(DECK_HOST):$(GRID_DIR)/$(STEAM_GAME_ID)_hero.png
+	scp steam-assets/background.jpg $(DECK_HOST):$(GRID_DIR)/$(STEAM_GAME_ID)_hero.jpg
