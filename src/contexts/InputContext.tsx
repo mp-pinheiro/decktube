@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react'
 
-export type ButtonAction = 'select' | 'back' | 'channel' | 'search' | 'play' | 'fullscreen' | 'next' | 'quality' | 'prevTab' | 'nextTab'
+export type ButtonAction = 'select' | 'back' | 'channel' | 'search' | 'play' | 'fullscreen' | 'next' | 'quality' | 'prevTab' | 'nextTab' | 'nav_up' | 'nav_down' | 'nav_left' | 'nav_right'
 
 interface InputContextValue {
   registerActions: (actions: Partial<Record<ButtonAction, () => void>>) => void

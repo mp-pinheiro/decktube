@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { pushInputLayer } from '../lib/inputLayer'
 
 const SHORTCUTS = [
   { action: 'Select / Play', keyboard: 'Enter / Space', gamepad: 'A' },
@@ -17,27 +18,24 @@ export default function HelpButton({ inline = false }: { inline?: boolean }) {
   const modalRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
+    return pushInputLayer('help-toggle', (intent) => {
+      if (intent !== 'help') return false
       const activeEl = document.activeElement as HTMLElement | null
       const isInputFocused = activeEl?.tagName === 'INPUT' || activeEl?.tagName === 'TEXTAREA'
+      if (isInputFocused) return false
+      setOpen(prev => !prev)
+      return true
+    })
+  }, [])
 
-      if (e.key === 'h' || e.key === 'H') {
-        if (isInputFocused) return
-        e.preventDefault()
-        e.stopPropagation()
-        setOpen(prev => !prev)
-        return
-      }
-
-      if (open && e.key === 'Escape') {
-        e.preventDefault()
-        e.stopPropagation()
+  useEffect(() => {
+    if (!open) return
+    return pushInputLayer('help-modal', (intent) => {
+      if (intent === 'back' || intent === 'help') {
         setOpen(false)
       }
-    }
-
-    window.addEventListener('keydown', handleKey, true)
-    return () => window.removeEventListener('keydown', handleKey, true)
+      return true
+    })
   }, [open])
 
   useEffect(() => {

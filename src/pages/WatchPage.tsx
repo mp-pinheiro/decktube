@@ -323,39 +323,13 @@ export default function WatchPage() {
       channel: goToChannel,
       fullscreen: toggleFullscreen,
       quality: toggleQuality,
+      nav_up: () => setVolume(Math.min(100, volume + 10)),
+      nav_down: () => setVolume(Math.max(0, volume - 10)),
+      nav_left: () => seek(-10),
+      nav_right: () => seek(10),
     })
     return () => unregisterActions()
-  }, [registerActions, unregisterActions, togglePlay, goToChannel, toggleFullscreen, toggleQuality])
-
-  useEffect(() => {
-    const handlePlayerKeydown = (e: KeyboardEvent) => {
-      const isInputFocused = document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA'
-
-      if (isInputFocused || qualityMenuOpen) return
-
-      switch (e.key) {
-        case 'ArrowRight':
-          e.preventDefault()
-          seek(10)
-          break
-        case 'ArrowLeft':
-          e.preventDefault()
-          seek(-10)
-          break
-        case 'ArrowUp':
-          e.preventDefault()
-          setVolume(Math.min(100, volume + 10))
-          break
-        case 'ArrowDown':
-          e.preventDefault()
-          setVolume(Math.max(0, volume - 10))
-          break
-      }
-    }
-
-    window.addEventListener('keydown', handlePlayerKeydown, true)
-    return () => window.removeEventListener('keydown', handlePlayerKeydown, true)
-  }, [seek, setVolume, volume, qualityMenuOpen])
+  }, [registerActions, unregisterActions, togglePlay, goToChannel, toggleFullscreen, toggleQuality, seek, setVolume, volume])
 
   if (!videoId) {
     return (

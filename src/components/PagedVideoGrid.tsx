@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { motion } from 'motion/react'
 import type { YouTubeVideo } from '../lib/youtube'
 import { setNavFocus } from '../lib/focusManager'
+import { pushInputLayer } from '../lib/inputLayer'
 import VideoCard from './VideoCard'
 
 const PAGE_SIZE = 6
@@ -39,43 +40,38 @@ export default function PagedVideoGrid({
   const pageVideos = videos.slice(pageIndex * PAGE_SIZE, (pageIndex + 1) * PAGE_SIZE)
 
   useEffect(() => {
-    const handleKeydown = (e: KeyboardEvent) => {
-      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+    return pushInputLayer('paged-grid', (intent) => {
+      if (intent !== 'nav_down' && intent !== 'nav_up') return false
 
       const grid = gridRef.current
-      if (!grid) return
+      if (!grid) return false
 
       const cards = Array.from(grid.querySelectorAll<HTMLElement>('[data-video-id]'))
       const activeEl = document.activeElement as HTMLElement
       const cardIndex = cards.indexOf(activeEl)
-      if (cardIndex === -1) return
+      if (cardIndex === -1) return false
 
       const isBottomRow = cardIndex >= 3
       const isTopRow = cardIndex < 3
       const col = cardIndex % 3
 
-      if (e.key === 'ArrowDown' && isBottomRow) {
-        e.stopImmediatePropagation()
-        e.preventDefault()
+      if (intent === 'nav_down' && isBottomRow) {
         const nextStart = (pageIndexRef.current + 1) * PAGE_SIZE
         if (nextStart < videosRef.current.length) {
           pendingFocusIndex.current = col
           setPageIndex(prev => prev + 1)
         }
-        return
+        return true
       }
 
-      if (e.key === 'ArrowUp' && isTopRow && pageIndexRef.current > 0) {
-        e.stopImmediatePropagation()
-        e.preventDefault()
+      if (intent === 'nav_up' && isTopRow && pageIndexRef.current > 0) {
         pendingFocusIndex.current = 3 + col
         setPageIndex(prev => prev - 1)
-        return
+        return true
       }
-    }
 
-    window.addEventListener('keydown', handleKeydown, true)
-    return () => window.removeEventListener('keydown', handleKeydown, true)
+      return false
+    })
   }, [])
 
   useEffect(() => {

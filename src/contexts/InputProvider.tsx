@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { initGamepad, setAppFocused } from '../lib/gamepad'
-import { initSpatialNav } from '../lib/spatialNav'
+import { handleSpatialNav } from '../lib/spatialNav'
 import { bootstrapNavFocus, forceBootstrapNavFocus, waitForBootstrap, initNavFocusCleanup } from '../lib/focusManager'
+import { keyToIntent, gamepadToIntent, type InputIntent } from '../lib/inputMap'
+import { dispatchThroughLayers } from '../lib/inputLayer'
 import { InputContext, type ButtonAction } from './InputContext'
 
 interface InputProviderProps {
@@ -63,82 +65,29 @@ export function InputProvider({ children }: InputProviderProps) {
   }, [])
 
   useEffect(() => {
-    const handleKeydown = (e: KeyboardEvent) => {
-      if (virtualKeyboardOpenRef.current) return
+    const handleIntent = (intent: InputIntent, source: 'keyboard' | 'gamepad', event?: KeyboardEvent): boolean => {
+      if (dispatchThroughLayers(intent, event)) return true
 
       const activeEl = document.activeElement as HTMLElement | null
       const isInputFocused = activeEl?.tagName === 'INPUT' || activeEl?.tagName === 'TEXTAREA'
 
-      if (!isInputFocused && (e.key === 's' || e.key === 'S')) {
-        e.preventDefault()
-        openVirtualKeyboard()
-        return
-      }
-
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        if (e.repeat) return
-        if (Date.now() - lastGamepadActionRef.current < 100) return
-        goBack()
-        return
-      }
-
-      if (isInputFocused) return
+      if (isInputFocused && intent !== 'back' && intent !== 'help') return false
 
       const actions = actionsRef.current
 
-      switch (e.key) {
-        case 'c':
-        case 'C':
-          if (actions.channel) {
-            e.preventDefault()
-            actions.channel()
-          }
-          break
-        case ' ':
-          if (e.repeat) break
-          if (actions.play) {
-            e.preventDefault()
-            actions.play()
-          }
-          break
-        case 'f':
-        case 'F':
-          if (actions.fullscreen) {
-            e.preventDefault()
-            actions.fullscreen()
-          }
-          break
-        case 'n':
-        case 'N':
-          if (actions.next) {
-            e.preventDefault()
-            actions.next()
-          }
-          break
-        case 'q':
-        case 'Q':
-          if (actions.quality) {
-            e.preventDefault()
-            actions.quality()
-          }
-          break
-        case '[':
-          if (actions.prevTab) {
-            e.preventDefault()
-            actions.prevTab()
-          }
-          break
-        case ']':
-          if (actions.nextTab) {
-            e.preventDefault()
-            actions.nextTab()
-          }
-          break
-        case 'Enter': {
-          e.preventDefault()
-          if (e.repeat) break
-          if (Date.now() - lastGamepadActionRef.current < 100) break
+      if (source === 'gamepad' && (intent === 'select' || intent === 'back')) {
+        if (Date.now() - lastGamepadActionRef.current < 300) return true
+        lastGamepadActionRef.current = Date.now()
+      }
+
+      if (source === 'keyboard' && (intent === 'select' || intent === 'back')) {
+        if (Date.now() - lastGamepadActionRef.current < 100) return true
+      }
+
+      switch (intent) {
+        case 'select': {
+          event?.preventDefault()
+          if (event?.repeat) return true
           if (activeEl?.id === 'search-display') {
             activeEl.click()
           } else if (actions.select && activeEl?.closest('[data-video-id]')) {
@@ -148,9 +97,86 @@ export function InputProvider({ children }: InputProviderProps) {
           } else {
             activeEl?.click()
           }
-          break
+          return true
         }
+        case 'back':
+          event?.preventDefault()
+          if (event?.repeat) return true
+          goBack()
+          return true
+        case 'search':
+          event?.preventDefault()
+          openVirtualKeyboard()
+          return true
+        case 'channel':
+          if (actions.channel) {
+            event?.preventDefault()
+            actions.channel()
+          }
+          return true
+        case 'play':
+          if (event?.repeat) return true
+          if (actions.play) {
+            event?.preventDefault()
+            actions.play()
+          }
+          return true
+        case 'fullscreen':
+          if (actions.fullscreen) {
+            event?.preventDefault()
+            actions.fullscreen()
+          } else if (source === 'gamepad' && actions.prevTab) {
+            actions.prevTab()
+          }
+          return true
+        case 'quality':
+          if (actions.quality) {
+            event?.preventDefault()
+            actions.quality()
+          }
+          return true
+        case 'next':
+          if (actions.next) {
+            event?.preventDefault()
+            actions.next()
+          }
+          return true
+        case 'prevTab':
+          if (actions.prevTab) {
+            event?.preventDefault()
+            actions.prevTab()
+          }
+          return true
+        case 'nextTab':
+          if (actions.nextTab) {
+            event?.preventDefault()
+            actions.nextTab()
+          }
+          return true
+        case 'help':
+          // Handled by help-toggle layer
+          return false
+        case 'nav_up':
+        case 'nav_down':
+        case 'nav_left':
+        case 'nav_right':
+          if (actions[intent]) {
+            event?.preventDefault()
+            actions[intent]!()
+            return true
+          }
+          handleSpatialNav(intent, event)
+          return true
       }
+    }
+
+    const handleKeydown = (e: KeyboardEvent) => {
+      if (virtualKeyboardOpenRef.current) return
+
+      const intent = keyToIntent(e.key)
+      if (!intent) return
+
+      handleIntent(intent, 'keyboard', e)
     }
 
     window.addEventListener('keydown', handleKeydown)
@@ -197,7 +223,6 @@ export function InputProvider({ children }: InputProviderProps) {
       }
 
       const activeEl = document.activeElement as HTMLElement | null
-      const actions = actionsRef.current
 
       if ((!activeEl || activeEl === document.body) &&
           ['DPAD_UP', 'DPAD_DOWN', 'DPAD_LEFT', 'DPAD_RIGHT', 'A'].includes(button)) {
@@ -206,78 +231,15 @@ export function InputProvider({ children }: InputProviderProps) {
         }
       }
 
-      switch (button) {
-        case 'A': {
-          if (Date.now() - lastGamepadActionRef.current < 300) break
-          lastGamepadActionRef.current = Date.now()
-          const currentEl = document.activeElement as HTMLElement | null
-          if (currentEl?.id === 'search-display') {
-            currentEl.click()
-          } else if (actions.select && currentEl?.closest('[data-video-id]')) {
-            actions.select()
-          } else if (actions.play && currentEl && !['A', 'BUTTON', 'INPUT', 'TEXTAREA'].includes(currentEl.tagName)) {
-            actions.play()
-          } else {
-            currentEl?.click()
-          }
-          break
-        }
-        case 'B':
-          if (Date.now() - lastGamepadActionRef.current < 300) break
-          lastGamepadActionRef.current = Date.now()
-          goBack()
-          break
-        case 'X':
-          if (actions.channel) {
-            actions.channel()
-          }
-          break
-        case 'Y':
-          openVirtualKeyboard()
-          break
-        case 'RB':
-          if (actions.nextTab) {
-            actions.nextTab()
-          }
-          break
-        case 'LB':
-          if (actions.fullscreen) {
-            actions.fullscreen()
-          } else if (actions.prevTab) {
-            actions.prevTab()
-          }
-          break
-        case 'LT':
-          if (actions.quality) {
-            actions.quality()
-          }
-          break
-        case 'SELECT':
-          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'h' }))
-          break
-        case 'DPAD_UP':
-          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp' }))
-          break
-        case 'DPAD_DOWN':
-          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }))
-          break
-        case 'DPAD_LEFT':
-          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }))
-          break
-        case 'DPAD_RIGHT':
-          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }))
-          break
-      }
+      const intent = gamepadToIntent(button)
+      if (intent) handleIntent(intent, 'gamepad')
     })
-
-    const cleanupSpatialNav = initSpatialNav()
 
     return () => {
       window.removeEventListener('keydown', handleKeydown)
       window.removeEventListener('gamepadconnected', handleGamepadConnect)
       cleanupNavFocus()
       cleanupGamepad()
-      cleanupSpatialNav()
     }
   }, [openVirtualKeyboard, closeVirtualKeyboard, goBack])
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
+import { pushInputLayer } from '../lib/inputLayer'
 
 export interface QualityOption {
   label: string
@@ -43,47 +44,35 @@ export default function QualitySelector({
   useEffect(() => {
     if (!open) return
 
-    const handleKeydown = (e: KeyboardEvent) => {
-      switch (e.key) {
-        case 'ArrowUp':
-          e.preventDefault()
-          e.stopPropagation()
+    return pushInputLayer('quality-selector', (intent) => {
+      switch (intent) {
+        case 'nav_up':
           focusItem(focusIndexRef.current - 1)
-          break
-        case 'ArrowDown':
-          e.preventDefault()
-          e.stopPropagation()
+          return true
+        case 'nav_down':
           focusItem(focusIndexRef.current + 1)
-          break
-        case 'ArrowLeft':
-        case 'ArrowRight':
-          e.preventDefault()
-          e.stopPropagation()
-          break
-        case 'Enter':
-        case ' ': {
-          e.preventDefault()
-          e.stopPropagation()
+          return true
+        case 'nav_left':
+        case 'nav_right':
+          return true
+        case 'select':
+        case 'play': {
           const focused = document.activeElement as HTMLButtonElement | null
           const quality = focused?.getAttribute('data-quality')
           if (quality) {
             onSelectQuality(quality)
             onClose()
           }
-          break
+          return true
         }
-        case 'Escape':
-        case 'q':
-        case 'Q':
-          e.preventDefault()
-          e.stopPropagation()
+        case 'back':
+        case 'quality':
           onClose()
-          break
+          return true
+        default:
+          return true
       }
-    }
-
-    window.addEventListener('keydown', handleKeydown, true)
-    return () => window.removeEventListener('keydown', handleKeydown, true)
+    })
   }, [open, onClose, onSelectQuality, focusItem])
 
   if (!open || !qualities.length) return null
