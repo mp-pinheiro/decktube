@@ -29,6 +29,7 @@ assets:
 	  -font DejaVu-Sans-Bold -pointsize 22 -fill '#888888' \
 	  -gravity Center -annotate +0+120 'YouTube for Steam Deck' \
 	  steam-assets/cover.png
+	convert steam-assets/cover.png steam-assets/cover.jpg
 	convert -size 920x430 xc:'#0d0d1a' \
 	  -fill 'rgba(160,0,255,0.15)' -draw 'circle 460,215 760,215' \
 	  -fill 'rgba(100,0,200,0.10)' -draw 'circle 100,100 400,100' \
@@ -39,6 +40,7 @@ assets:
 	  -font DejaVu-Sans-Bold -pointsize 22 -fill '#888888' \
 	  -gravity Center -annotate +0+115 'YouTube for Steam Deck' \
 	  steam-assets/wide_cover.png
+	convert steam-assets/wide_cover.png steam-assets/wide_cover.jpg
 	convert -size 1280x218 xc:none \
 	  -fill '#cc0000' -draw 'roundrectangle 10,10 208,208 24,24' \
 	  -fill white -draw 'polygon 58,44 58,174 174,109' \
@@ -71,9 +73,13 @@ deploy: build
 deploy-art:
 	@test -n "$(STEAM_USER_ID)" || (echo "STEAM_USER_ID is required"; exit 1)
 	@test -n "$(STEAM_GAME_ID)" || (echo "STEAM_GAME_ID is required"; exit 1)
+	ssh $(DECK_HOST) 'rm -f ~/.local/share/Steam/appcache/librarycache/$(STEAM_GAME_ID)*'
 	scp steam-assets/cover.png      $(DECK_HOST):$(GRID_DIR)/$(STEAM_GAME_ID)p.png
+	scp steam-assets/cover.jpg      $(DECK_HOST):$(GRID_DIR)/$(STEAM_GAME_ID)p.jpg
 	scp steam-assets/wide_cover.png $(DECK_HOST):$(GRID_DIR)/$(STEAM_GAME_ID).png
+	scp steam-assets/wide_cover.jpg $(DECK_HOST):$(GRID_DIR)/$(STEAM_GAME_ID).jpg
 	scp steam-assets/icon.png       $(DECK_HOST):$(GRID_DIR)/$(STEAM_GAME_ID)_icon.png
 	scp steam-assets/logo.png       $(DECK_HOST):$(GRID_DIR)/$(STEAM_GAME_ID)_logo.png
 	scp steam-assets/background.png $(DECK_HOST):$(GRID_DIR)/$(STEAM_GAME_ID)_hero.png
 	scp steam-assets/background.jpg $(DECK_HOST):$(GRID_DIR)/$(STEAM_GAME_ID)_hero.jpg
+	@echo "Art deployed. Restart Steam on the Deck for changes to take effect."
