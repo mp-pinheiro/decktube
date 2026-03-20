@@ -29,11 +29,7 @@ function storeEntries(entries: HistoryEntry[]): void {
 }
 
 export function recordHistory(video: YouTubeVideo, position: number, duration: number): void {
-  const entries = loadEntries()
-  const idx = entries.findIndex(e => e.video.videoId === video.videoId)
-  if (idx !== -1) {
-    entries.splice(idx, 1)
-  }
+  const entries = loadEntries().filter(e => e.video.videoId !== video.videoId)
   entries.unshift({ video, watchedAt: Date.now(), position, duration })
   if (entries.length > MAX_ENTRIES) {
     entries.length = MAX_ENTRIES
@@ -42,7 +38,17 @@ export function recordHistory(video: YouTubeVideo, position: number, duration: n
 }
 
 export function getHistory(): YouTubeVideo[] {
-  return loadEntries().map(e => e.video)
+  const seen = new Set<string>()
+  return loadEntries()
+    .filter(e => {
+      if (seen.has(e.video.videoId)) return false
+      seen.add(e.video.videoId)
+      return true
+    })
+    .map(e => ({
+      ...e.video,
+      duration: e.video.duration || e.duration || undefined,
+    }))
 }
 
 export function removeFromHistory(videoId: string): void {
