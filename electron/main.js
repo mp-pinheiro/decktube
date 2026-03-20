@@ -244,7 +244,6 @@ async function initAutoUpdater() {
 
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
-  autoUpdater.allowPrerelease = true
   autoUpdater.logger = console
 
   console.log('[Updater] Checking for updates...')

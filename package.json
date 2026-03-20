@@ -65,7 +65,7 @@
     ],
     "publish": {
       "provider": "github",
-      "releaseType": "prerelease"
+      "releaseType": "release"
     },
     "linux": {
       "target": [
