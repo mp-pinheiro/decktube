@@ -582,14 +582,31 @@ export async function getRelatedVideos(videoId: string): Promise<YouTubeVideo[]>
   }
 }
 
-export async function search(query: string): Promise<YouTubeSearchResult[]> {
+export interface SearchResult {
+  videos: YouTubeSearchResult[]
+  continuation: string | null
+}
+
+export async function search(query: string): Promise<SearchResult> {
   const response = (await youtubeiRequest('search', {
     context: { client: TV_CLIENT_CONFIG },
     query,
   }, true)) as Record<string, unknown>
 
-  const videos = extractVideosFromRenderers(response)
-  return videos.map(v => ({ ...v, type: 'video' as const }))
+  const videos = extractVideosFromRenderers(response).map(v => ({ ...v, type: 'video' as const }))
+  const continuation = extractContinuationToken(response)
+  return { videos, continuation }
+}
+
+export async function searchContinuation(continuationToken: string): Promise<SearchResult> {
+  const response = (await youtubeiRequest('search', {
+    context: { client: TV_CLIENT_CONFIG },
+    continuation: continuationToken,
+  }, true)) as Record<string, unknown>
+
+  const videos = extractVideosFromRenderers(response).map(v => ({ ...v, type: 'video' as const }))
+  const continuation = extractContinuationToken(response)
+  return { videos, continuation }
 }
 
 export interface AdaptiveFormat {
