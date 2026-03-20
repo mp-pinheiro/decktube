@@ -198,7 +198,7 @@ export default function HomePage() {
   }, [registerActions, unregisterActions, goToVideo, goToChannel, cycleTab, activeTab, openModeMenu])
 
   return (
-    <div>
+    <div className="flex flex-col flex-1 min-h-0">
       <TabBar tabs={TABS} activeTab={activeTab} onTabChange={setActiveTab} />
 
       {activeTab === 'recommended' && (

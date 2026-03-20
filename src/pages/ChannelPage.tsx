@@ -61,7 +61,7 @@ export default function ChannelPage() {
   const tabs = useMemo(() => [{ id: 'videos', label: channelName }], [channelName])
 
   return (
-    <div>
+    <div className="flex flex-col flex-1 min-h-0">
       <TabBar tabs={tabs} activeTab="videos" onTabChange={() => {}} />
 
       <PagedVideoGrid

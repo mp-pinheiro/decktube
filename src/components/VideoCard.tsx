@@ -19,10 +19,10 @@ export default function VideoCard({ video, showChannel = true, showDuration = tr
       to={`/watch/${video.videoId}`}
       data-video-id={video.videoId}
       data-channel-id={video.channelId}
-      className="group cursor-pointer flex flex-col gap-1 outline-none focus:outline-none focus:ring-2 focus:ring-red-500 rounded-2xl"
+      className="group cursor-pointer flex flex-col gap-1 outline-none focus:outline-none focus:ring-2 focus:ring-red-500 rounded-2xl min-h-0"
       onClick={() => recordHistory(video, 0, 0)}
     >
-      <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-zinc-800 border border-white/5 shadow-lg">
+      <div className="relative flex-1 min-h-0 w-full overflow-hidden rounded-2xl bg-zinc-800 border border-white/5 shadow-lg">
         {getThumbnailUrl(video) && (
           <img
             src={getThumbnailUrl(video)}
@@ -44,9 +44,9 @@ export default function VideoCard({ video, showChannel = true, showDuration = tr
         )}
       </div>
 
-      <div className="flex-shrink-0 flex gap-2 px-1">
+      <div className="h-[4.5rem] flex-shrink-0 flex gap-2 px-1">
         <div className="flex flex-col gap-0.5 overflow-hidden">
-          <h3 className="line-clamp-2 text-xs font-semibold text-zinc-100 leading-snug group-hover:text-blue-400 transition-colors min-h-[2rem]">
+          <h3 className="line-clamp-2 text-xs font-semibold text-zinc-100 leading-snug group-hover:text-blue-400 transition-colors">
             {video.title}
           </h3>
           <div className="flex flex-col text-[11px] text-zinc-400">
