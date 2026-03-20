@@ -1,5 +1,3 @@
-declare module 'simple-keyboard-key-navigation'
-
 interface UpdateStatusPayload {
   status: 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'
   version?: string
