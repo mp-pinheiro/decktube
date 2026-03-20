@@ -19,7 +19,7 @@ export default function VideoCard({ video, showChannel = true, showDuration = tr
       to={`/watch/${video.videoId}`}
       data-video-id={video.videoId}
       data-channel-id={video.channelId}
-      className="group cursor-pointer flex flex-col gap-2 outline-none focus:outline-none focus:ring-2 focus:ring-red-500 rounded-2xl"
+      className="group cursor-pointer flex flex-col gap-1 outline-none focus:outline-none focus:ring-2 focus:ring-red-500 rounded-2xl"
       onClick={() => recordHistory(video, 0, 0)}
     >
       <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-zinc-800 border border-white/5 shadow-lg">
@@ -44,12 +44,12 @@ export default function VideoCard({ video, showChannel = true, showDuration = tr
         )}
       </div>
 
-      <div className="flex-shrink-0 flex gap-3 px-1">
-        <div className="flex flex-col gap-1 overflow-hidden">
-          <h3 className="line-clamp-2 text-sm font-semibold text-zinc-100 leading-snug group-hover:text-blue-400 transition-colors min-h-[2.4rem]">
+      <div className="flex-shrink-0 flex gap-2 px-1">
+        <div className="flex flex-col gap-0.5 overflow-hidden">
+          <h3 className="line-clamp-2 text-xs font-semibold text-zinc-100 leading-snug group-hover:text-blue-400 transition-colors min-h-[2rem]">
             {video.title}
           </h3>
-          <div className="flex flex-col text-xs text-zinc-400">
+          <div className="flex flex-col text-[11px] text-zinc-400">
             {showChannel && <span>{video.channelName}</span>}
             <div className="flex items-center gap-1">
               <span>{video.viewCount ? formatViews(video.viewCount) : ''}</span>
