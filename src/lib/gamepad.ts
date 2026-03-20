@@ -89,19 +89,8 @@ export function initGamepad(handler: GamepadButtonHandler) {
     previousButtonStates.delete(e.gamepad.index)
   }
 
-  // Browser-level focus tracking as fallback for Steam Deck Game Mode
-  // where document.hasFocus() and Electron blur events may not fire
-  const handleWindowBlur = () => { appFocused = false }
-  const handleWindowFocus = () => { appFocused = true }
-  const handleVisibilityChange = () => {
-    if (document.hidden) appFocused = false
-  }
-
   window.addEventListener('gamepadconnected', handleConnect)
   window.addEventListener('gamepaddisconnected', handleDisconnect)
-  window.addEventListener('blur', handleWindowBlur)
-  window.addEventListener('focus', handleWindowFocus)
-  document.addEventListener('visibilitychange', handleVisibilityChange)
 
   return () => {
     buttonHandlers = buttonHandlers.filter(h => h !== handler)
@@ -112,9 +101,6 @@ export function initGamepad(handler: GamepadButtonHandler) {
     }
     window.removeEventListener('gamepadconnected', handleConnect)
     window.removeEventListener('gamepaddisconnected', handleDisconnect)
-    window.removeEventListener('blur', handleWindowBlur)
-    window.removeEventListener('focus', handleWindowFocus)
-    document.removeEventListener('visibilitychange', handleVisibilityChange)
   }
 }
 
