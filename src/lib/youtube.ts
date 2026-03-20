@@ -198,6 +198,29 @@ function parseVideoRenderer(renderer: VideoRenderer | CompactVideoRenderer | und
   }
 }
 
+function isLiveOrMix(renderer: any): boolean {
+  if (renderer.badges) {
+    for (const badge of renderer.badges) {
+      const meta = badge.metadataBadgeRenderer
+      if (!meta) continue
+      if (meta.style === 'BADGE_STYLE_TYPE_LIVE_NOW') return true
+      if (typeof meta.label === 'string' && meta.label.toUpperCase().includes('LIVE')) return true
+    }
+  }
+
+  if (renderer.thumbnailOverlays) {
+    for (const overlay of renderer.thumbnailOverlays) {
+      const style = overlay.thumbnailOverlayTimeStatusRenderer?.style
+      if (style === 'LIVE' || style === 'UPCOMING') return true
+    }
+  }
+
+  const playlistId = renderer.navigationEndpoint?.watchEndpoint?.playlistId
+  if (typeof playlistId === 'string' && playlistId.startsWith('RD')) return true
+
+  return false
+}
+
 function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
   const videos: YouTubeVideo[] = []
 
@@ -216,16 +239,22 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
     const item = current as Record<string, unknown>
 
     if ('videoRenderer' in item) {
-      const video = parseVideoRenderer(item.videoRenderer as VideoRenderer)
-      if (video) videos.push(video)
+      if (!isLiveOrMix(item.videoRenderer)) {
+        const video = parseVideoRenderer(item.videoRenderer as VideoRenderer)
+        if (video) videos.push(video)
+      }
     } else if ('compactVideoRenderer' in item) {
-      const video = parseVideoRenderer(item.compactVideoRenderer as CompactVideoRenderer)
-      if (video) videos.push(video)
+      if (!isLiveOrMix(item.compactVideoRenderer)) {
+        const video = parseVideoRenderer(item.compactVideoRenderer as CompactVideoRenderer)
+        if (video) videos.push(video)
+      }
     } else if ('gridVideoRenderer' in item) {
-      const video = parseVideoRenderer(item.gridVideoRenderer as VideoRenderer)
-      if (video) videos.push(video)
+      if (!isLiveOrMix(item.gridVideoRenderer)) {
+        const video = parseVideoRenderer(item.gridVideoRenderer as VideoRenderer)
+        if (video) videos.push(video)
+      }
     } else if ('lockupViewModel' in item) {
-      const lockup = (item as { lockupViewModel: { contentId?: string; thumbnail?: unknown; metadata?: unknown } }).lockupViewModel
+      const lockup = (item as { lockupViewModel: { contentId?: string; thumbnail?: unknown; metadata?: unknown; rendererContext?: any } }).lockupViewModel
       if (lockup.contentId?.startsWith('video:')) {
         const videoId = lockup.contentId.replace('video:', '')
         const thumbnail = lockup.thumbnail as { thumbnailViewModel?: { image?: { sources?: Array<{ url?: string }> } } }
@@ -239,6 +268,7 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
         let duration: number | undefined
         let viewCount: number | undefined
         let publishedTimeText = ''
+        let hasWatchingText = false
         const subtitle = metadata?.contentMetadataViewModel?.subtitle as any
         if (subtitle && typeof subtitle === 'object' && subtitle.runs) {
           for (const run of subtitle.runs) {
@@ -259,7 +289,13 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
               continue
             }
 
-            if (text.includes('views') || text.includes('watching')) {
+            if (text.includes('watching')) {
+              hasWatchingText = true
+              viewCount = parseViewCount(text)
+              continue
+            }
+
+            if (text.includes('views')) {
               viewCount = parseViewCount(text)
               continue
             }
@@ -277,6 +313,8 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
           channelName = subtitle.split('•')[0]?.trim() || ''
         }
 
+        if (hasWatchingText) return
+
         if (videoId && title) {
           videos.push({
             videoId,
@@ -293,8 +331,13 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
     } else if ('tileRenderer' in item) {
       const tile = item.tileRenderer as any
       const videoId = tile.onSelectCommand?.watchEndpoint?.videoId
-      
+
       if (videoId) {
+        const tilePlaylistId = tile.onSelectCommand?.watchEndpoint?.playlistId
+        if (typeof tilePlaylistId === 'string' && tilePlaylistId.startsWith('RD')) {
+          return
+        }
+
         const titleText = extractText(tile.metadata?.tileMetadataRenderer?.title)
         let thumbnails: YouTubeThumbnail[] = []
         if (tile.header?.tileHeaderRenderer?.thumbnail?.thumbnails) {
@@ -304,14 +347,20 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
         }
 
         let duration: number | undefined
+        let isLive = false
         const overlays = tile.header?.tileHeaderRenderer?.thumbnailOverlays || []
         for (const overlay of overlays) {
-          const durationText = overlay.thumbnailOverlayTimeStatusRenderer?.text?.simpleText
-          if (durationText) {
-            duration = parseDuration(durationText)
+          const timeStatus = overlay.thumbnailOverlayTimeStatusRenderer
+          if (timeStatus?.style === 'LIVE') {
+            isLive = true
             break
           }
+          const durationText = timeStatus?.text?.simpleText
+          if (durationText) {
+            duration = parseDuration(durationText)
+          }
         }
+        if (isLive) return
 
         const lines = tile.metadata?.tileMetadataRenderer?.lines || []
         let channelName = ''
@@ -361,11 +410,13 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
   walk(data)
 
   const seen = new Set<string>()
-  return videos.filter(v => {
-    if (seen.has(v.videoId)) return false
-    seen.add(v.videoId)
-    return true
-  })
+  return videos
+    .filter(v => {
+      if (seen.has(v.videoId)) return false
+      seen.add(v.videoId)
+      return true
+    })
+    .filter(v => v.duration !== undefined && v.duration > 0)
 }
 
 function extractContinuationToken(data: unknown): string | null {
