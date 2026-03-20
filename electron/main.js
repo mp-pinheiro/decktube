@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 
 import { createServer } from 'http'
 import https from 'https'
@@ -223,6 +223,12 @@ function sendUpdateStatus(payload) {
 async function initAutoUpdater() {
   if (isDev) return
 
+  console.log('[Updater] Diagnostics:', {
+    APPIMAGE: process.env.APPIMAGE ?? 'unset',
+    exePath: app.getPath('exe'),
+    isPackaged: app.isPackaged,
+  })
+
   let autoUpdater
   try {
     const mod = await import('electron-updater')
@@ -284,8 +290,13 @@ async function initAutoUpdater() {
     autoUpdater.quitAndInstall()
   })
 
+  ipcMain.handle('open-releases-page', () =>
+    shell.openExternal('https://github.com/mp-pinheiro/decktube/releases/latest')
+  )
+
   autoUpdater.checkForUpdates().catch((e) => {
     console.error('[Updater] Check failed:', e?.message)
+    sendUpdateStatus({ status: 'error', message: e?.message ?? 'Failed to check for updates' })
   })
 }
 

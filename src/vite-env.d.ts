@@ -15,6 +15,7 @@ interface ElectronAPI {
   onUpdateStatus: (callback: (payload: UpdateStatusPayload) => void) => () => void
   downloadUpdate: () => Promise<void>
   installUpdate: () => Promise<void>
+  openReleasesPage: () => Promise<void>
 }
 
 declare global {

@@ -6,6 +6,7 @@ type BannerState =
   | { phase: 'available'; version: string }
   | { phase: 'downloading'; percent: number }
   | { phase: 'downloaded'; version: string }
+  | { phase: 'error'; message: string }
 
 export default function UpdateBanner() {
   const [state, setState] = useState<BannerState>({ phase: 'hidden' })
@@ -35,6 +36,7 @@ export default function UpdateBanner() {
           break
         case 'error':
           console.error('[UpdateBanner] Update error:', payload.message)
+          setState({ phase: 'error', message: payload.message ?? 'Unknown error' })
           break
       }
     })
@@ -73,7 +75,7 @@ export default function UpdateBanner() {
   }, [state.phase])
 
   useEffect(() => {
-    if (state.phase === 'available' || state.phase === 'downloaded') {
+    if (state.phase === 'available' || state.phase === 'downloaded' || state.phase === 'error') {
       requestAnimationFrame(() => primaryBtnRef.current?.focus())
     }
   }, [state.phase])
@@ -85,6 +87,10 @@ export default function UpdateBanner() {
 
   const handleInstall = useCallback(() => {
     window.electronAPI?.installUpdate()
+  }, [])
+
+  const handleOpenReleases = useCallback(() => {
+    window.electronAPI?.openReleasesPage()
   }, [])
 
   const handleDismiss = useCallback(() => {
@@ -170,6 +176,33 @@ export default function UpdateBanner() {
             >
               Restart
             </button>
+          </>
+        )}
+
+        {state.phase === 'error' && (
+          <>
+            <div className="flex items-center gap-3 mb-3">
+              <svg className="w-6 h-6 text-amber-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86l-8.3 14.49A1 1 0 003 20h18a1 1 0 00.87-1.5l-8.3-14.49a1.04 1.04 0 00-1.74 0z" />
+              </svg>
+              <h2 className="text-lg font-bold text-white">Update Failed</h2>
+            </div>
+            <p className="text-sm text-zinc-400 mb-5">{state.message}</p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleDismiss}
+                className="flex-1 px-4 py-2 text-sm font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+              >
+                Dismiss
+              </button>
+              <button
+                ref={primaryBtnRef}
+                onClick={handleOpenReleases}
+                className="flex-1 px-4 py-2 text-sm font-medium bg-amber-600 hover:bg-amber-500 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+              >
+                Download Manually
+              </button>
+            </div>
           </>
         )}
       </div>

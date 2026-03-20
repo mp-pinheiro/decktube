@@ -21,4 +21,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   downloadUpdate: () => ipcRenderer.invoke('update-download'),
   installUpdate: () => ipcRenderer.invoke('update-install'),
+  openReleasesPage: () => ipcRenderer.invoke('open-releases-page'),
 })
