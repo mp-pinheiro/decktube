@@ -2,11 +2,12 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import HelpButton from '../components/HelpButton'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { MediaPlayer, type MediaPlayerClass, type Representation } from 'dashjs'
-import { getVideoDetails, getPlayerData, generateMpd, type YouTubeVideo, type MuxedFormat, generateCpn, reportPlaybackStart, reportWatchtime } from '../lib/youtube'
+import { getVideoDetails, getPlayerData, generateMpd, getRelatedVideos, type YouTubeVideo, type MuxedFormat, generateCpn, reportPlaybackStart, reportWatchtime } from '../lib/youtube'
 import { savePlaybackPosition, getPlaybackPosition, clearPlaybackPosition } from '../lib/playbackStore'
 import { useInputContext } from '../contexts/InputProvider'
 import QualitySelector, { type QualityOption } from '../components/QualitySelector'
 import PlayerOverlay from '../components/PlayerOverlay'
+import AutoPlayOverlay from '../components/AutoPlayOverlay'
 import { formatViews } from '../lib/format'
 
 function heightToLabel(height: number): string {
@@ -56,6 +57,11 @@ export default function WatchPage() {
 
   const cpnRef = useRef<string>(generateCpn())
   const playbackStartedRef = useRef(false)
+
+  const [nextVideo, setNextVideo] = useState<YouTubeVideo | null>(null)
+  const [autoPlayVisible, setAutoPlayVisible] = useState(false)
+  const nextVideoRef = useRef<YouTubeVideo | null>(null)
+  useEffect(() => { nextVideoRef.current = nextVideo }, [nextVideo])
 
   const destroyDash = useCallback(() => {
     if (initTimerRef.current) {
@@ -157,6 +163,7 @@ export default function WatchPage() {
     setError(null)
     setDashQualities([])
     setCurrentQuality('auto')
+    setAutoPlayVisible(false)
     destroyDash()
 
     cpnRef.current = generateCpn()
@@ -247,6 +254,16 @@ export default function WatchPage() {
   }, [videoId, destroyDash, initDash, initProgressive])
 
   useEffect(() => {
+    if (!videoId) return
+    let cancelled = false
+    setNextVideo(null)
+    getRelatedVideos(videoId).then(videos => {
+      if (!cancelled && videos.length > 0) setNextVideo(videos[0])
+    })
+    return () => { cancelled = true }
+  }, [videoId])
+
+  useEffect(() => {
     const video = videoElRef.current
     if (!video) return
 
@@ -269,6 +286,7 @@ export default function WatchPage() {
 
     const onEnded = () => {
       if (videoId) clearPlaybackPosition(videoId)
+      if (nextVideoRef.current) setAutoPlayVisible(true)
     }
 
     video.addEventListener('play', onPlay)
@@ -361,19 +379,31 @@ export default function WatchPage() {
     setQualityMenuOpen(prev => !prev)
   }, [])
 
+  const handleAutoPlay = useCallback(() => {
+    if (!nextVideoRef.current) return
+    setAutoPlayVisible(false)
+    navigate(`/watch/${nextVideoRef.current.videoId}`)
+  }, [navigate])
+
+  const handleAutoPlayCancel = useCallback(() => {
+    setAutoPlayVisible(false)
+    navigate(-1)
+  }, [navigate])
+
   useEffect(() => {
     registerActions({
       play: togglePlay,
       channel: goToChannel,
       fullscreen: toggleFullscreen,
       quality: toggleQuality,
+      next: handleAutoPlay,
       nav_up: () => setVolume(Math.min(100, volume + 10)),
       nav_down: () => setVolume(Math.max(0, volume - 10)),
       nav_left: () => seek(-10),
       nav_right: () => seek(10),
     })
     return () => unregisterActions()
-  }, [registerActions, unregisterActions, togglePlay, goToChannel, toggleFullscreen, toggleQuality, seek, setVolume, volume])
+  }, [registerActions, unregisterActions, togglePlay, goToChannel, toggleFullscreen, toggleQuality, handleAutoPlay, seek, setVolume, volume])
 
   if (!videoId) {
     return (
@@ -434,6 +464,14 @@ export default function WatchPage() {
           currentQuality={currentQuality}
           onSelectQuality={handleSelectQuality}
         />
+        {nextVideo && (
+          <AutoPlayOverlay
+            open={autoPlayVisible}
+            video={nextVideo}
+            onPlay={handleAutoPlay}
+            onCancel={handleAutoPlayCancel}
+          />
+        )}
       </div>
 
       <div className="shrink-0 mt-6 flex items-start justify-between gap-4">
