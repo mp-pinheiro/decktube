@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { initGamepad, setAppFocused, isAppFocused } from '../lib/gamepad'
+import { initGamepad } from '../lib/gamepad'
 import { handleSpatialNav } from '../lib/spatialNav'
 import { bootstrapNavFocus, forceBootstrapNavFocus, waitForBootstrap, initNavFocusCleanup } from '../lib/focusManager'
 import { keyToIntent, gamepadToIntent, type InputIntent } from '../lib/inputMap'
@@ -178,7 +178,6 @@ export function InputProvider({ children }: InputProviderProps) {
 
     const handleKeydown = (e: KeyboardEvent) => {
       if (virtualKeyboardOpenRef.current) return
-      if (document.hidden || !isAppFocused()) return
 
       const intent = keyToIntent(e.key)
       if (!intent) return
@@ -249,14 +248,6 @@ export function InputProvider({ children }: InputProviderProps) {
       cleanupGamepad()
     }
   }, [openVirtualKeyboard, closeVirtualKeyboard, goBack])
-
-  useEffect(() => {
-    const api = window.electronAPI
-    if (!api?.onWindowFocusChange) return
-    return api.onWindowFocusChange((focused: boolean) => {
-      setAppFocused(focused)
-    })
-  }, [])
 
   useEffect(() => {
     return waitForBootstrap()

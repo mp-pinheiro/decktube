@@ -2,7 +2,6 @@ import { useEffect, useRef, useCallback } from 'react'
 import Keyboard from 'react-simple-keyboard'
 import keyNavigation from 'simple-keyboard-key-navigation'
 import { useInputContext } from '../contexts/InputContext'
-import { isAppFocused } from '../lib/gamepad'
 import type { SimpleKeyboard } from 'react-simple-keyboard'
 
 const LAYOUT = {
@@ -43,7 +42,6 @@ export default function VirtualKeyboard() {
     if (!virtualKeyboardOpen) return
 
     const handleKeydown = (e: KeyboardEvent) => {
-      if (document.hidden || !isAppFocused()) return
       const nav = keyboardRef.current?.modules?.keyNavigation
       if (!nav) return
 

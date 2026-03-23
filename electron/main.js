@@ -196,13 +196,6 @@ async function createWindow() {
     if (level >= 2) console.error(`[Renderer] ${message}`)
   })
 
-  mainWindow.on('focus', () => {
-    mainWindow.webContents.send('window-focus-change', true)
-  })
-  mainWindow.on('blur', () => {
-    mainWindow.webContents.send('window-focus-change', false)
-  })
-
   mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
     const currentOrigin = new URL(url).origin
     const targetOrigin = new URL(navigationUrl).origin

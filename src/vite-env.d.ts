@@ -9,7 +9,6 @@ interface UpdateStatusPayload {
 }
 
 interface ElectronAPI {
-  onWindowFocusChange: (callback: (focused: boolean) => void) => () => void
   onUpdateStatus: (callback: (payload: UpdateStatusPayload) => void) => () => void
   downloadUpdate: () => Promise<void>
   installUpdate: () => Promise<void>

@@ -21,19 +21,10 @@ let animationFrameId: number | null = null
 let buttonHandlers: GamepadButtonHandler[] = []
 const previousButtonStates = new Map<number, boolean[]>()
 
-let appFocused = true
 let wasFocused = true
 
-export function setAppFocused(focused: boolean) {
-  appFocused = focused
-}
-
-export function isAppFocused(): boolean {
-  return appFocused
-}
-
 function pollGamepads() {
-  const isFocused = !document.hidden && document.hasFocus() && appFocused
+  const isFocused = !document.hidden && document.hasFocus()
 
   if (!isFocused) {
     if (wasFocused) {
