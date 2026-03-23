@@ -1,8 +1,9 @@
 import { doc, getDoc, setDoc } from 'firebase/firestore/lite'
 import { initFirebaseAuth, getFirebaseDb, isFirebaseReady, getFirebaseUser } from './firebase'
-import { getIdToken, refreshAccessToken } from './oauth'
+import { getIdToken } from './oauth'
 import { getHistoryEntries, replaceHistoryEntries, type HistoryEntry } from './historyStore'
 import { getAllPositions, replaceAllPositions, type PositionsMap } from './playbackStore'
+import { syncLog } from './syncLog'
 
 const MAX_ENTRIES = 200
 const HISTORY_DEBOUNCE_MS = 500
@@ -11,18 +12,7 @@ const PLAYBACK_DEBOUNCE_MS = 30_000
 let historyTimer: ReturnType<typeof setTimeout> | null = null
 let playbackTimer: ReturnType<typeof setTimeout> | null = null
 let isSyncing = false
-let lastSyncAt = 0
-const SYNC_COOLDOWN_MS = 30_000
 let syncStatus: 'idle' | 'syncing' | 'synced' | 'offline' | 'unauthenticated' = 'idle'
-
-function isTokenExpired(token: string): boolean {
-  try {
-    const payload = JSON.parse(atob(token.split('.')[1]))
-    return Date.now() >= payload.exp * 1000
-  } catch {
-    return true
-  }
-}
 
 function getUserDocRef() {
   const db = getFirebaseDb()
@@ -68,26 +58,13 @@ function mergePlayback(local: PositionsMap, remote: PositionsMap): PositionsMap 
 
 export async function initSync(): Promise<void> {
   if (isSyncing) return
-  if (syncStatus === 'synced' && Date.now() - lastSyncAt < SYNC_COOLDOWN_MS) return
   isSyncing = true
 
   try {
-    let idToken = getIdToken()
-    if (!idToken) {
-      syncStatus = 'unauthenticated'
-      return
-    }
-
-    if (isTokenExpired(idToken)) {
-      await refreshAccessToken()
-      idToken = getIdToken()
-      if (!idToken || isTokenExpired(idToken)) {
-        syncStatus = 'unauthenticated'
-        return
-      }
-    }
-
     syncStatus = 'syncing'
+    syncLog('info', 'initSync: starting')
+
+    const idToken = getIdToken()
     const user = await initFirebaseAuth(idToken)
     const db = getFirebaseDb()
     if (!db) throw new Error('Firestore not initialized')
@@ -115,22 +92,28 @@ export async function initSync(): Promise<void> {
         playback: mergedPlayback,
         updatedAt: Date.now(),
       })
+
+      syncLog('info', 'initSync: merged', `history=${mergedHistory.length} playback=${Object.keys(mergedPlayback).length}`)
     } else {
       await setDoc(docRef, {
         history: localHistory,
         playback: localPlayback,
         updatedAt: Date.now(),
       })
+      syncLog('info', 'initSync: created new doc', `history=${localHistory.length} playback=${Object.keys(localPlayback).length}`)
     }
 
     syncStatus = 'synced'
-    lastSyncAt = Date.now()
     window.dispatchEvent(new Event('firestore-sync'))
-    syncHistory(getHistoryEntries())
-    syncPlayback(getAllPositions())
   } catch (err) {
-    console.warn('Firestore init sync failed:', err)
-    syncStatus = 'offline'
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg === 'No valid authentication available') {
+      syncStatus = 'unauthenticated'
+      syncLog('warn', 'initSync: unauthenticated', msg)
+    } else {
+      syncStatus = 'offline'
+      syncLog('error', 'initSync: failed', msg)
+    }
   } finally {
     isSyncing = false
   }
@@ -143,9 +126,14 @@ export function syncHistory(entries: HistoryEntry[]): void {
     const ref = getUserDocRef()
     if (!ref) return
     try {
-      await setDoc(ref, { history: entries, updatedAt: Date.now() }, { merge: true })
+      const snapshot = await getDoc(ref)
+      const remote = snapshot.exists()
+        ? (snapshot.data() as { history?: HistoryEntry[] })
+        : {}
+      const merged = mergeHistory(entries, remote.history || [])
+      await setDoc(ref, { history: merged, updatedAt: Date.now() }, { merge: true })
     } catch (err) {
-      console.warn('Firestore history sync failed:', err)
+      syncLog('error', 'syncHistory: failed', String(err))
     }
   }, HISTORY_DEBOUNCE_MS)
 }
@@ -157,13 +145,27 @@ export function syncPlayback(positions: PositionsMap): void {
     const ref = getUserDocRef()
     if (!ref) return
     try {
-      await setDoc(ref, { playback: positions, updatedAt: Date.now() }, { merge: true })
+      const snapshot = await getDoc(ref)
+      const remote = snapshot.exists()
+        ? (snapshot.data() as { playback?: PositionsMap })
+        : {}
+      const merged = mergePlayback(positions, remote.playback || {})
+      await setDoc(ref, { playback: merged, updatedAt: Date.now() }, { merge: true })
     } catch (err) {
-      console.warn('Firestore playback sync failed:', err)
+      syncLog('error', 'syncPlayback: failed', String(err))
     }
   }, PLAYBACK_DEBOUNCE_MS)
 }
 
 export function getSyncStatus() {
   return syncStatus
+}
+
+export function getSyncDiagnostics() {
+  return {
+    syncStatus,
+    isFirebaseReady: isFirebaseReady(),
+    hasIdToken: !!getIdToken(),
+    hasCurrentUser: !!getFirebaseUser(),
+  }
 }
