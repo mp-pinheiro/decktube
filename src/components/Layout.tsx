@@ -1,4 +1,4 @@
-import { lazy, Suspense, Component, useEffect, useRef, type ReactNode } from 'react'
+import { lazy, Suspense, Component, useEffect, type ReactNode } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import Header from './Header'
 import { InputProvider } from '../contexts/InputProvider'
@@ -22,13 +22,19 @@ export default function Layout() {
   const location = useLocation()
   const isWatchPage = location.pathname.startsWith('/watch/')
 
-  const syncStarted = useRef(false)
   useEffect(() => {
-    if (!syncStarted.current && isAuthenticated()) {
-      syncStarted.current = true
-      initSync().catch(err => console.warn('Firestore sync init failed:', err))
+    const trySync = () => {
+      if (isAuthenticated()) {
+        initSync().catch(err => console.warn('Firestore sync init failed:', err))
+      }
     }
-  }, [location.pathname])
+    trySync()
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') trySync()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [])
 
   return (
     <InputProvider>

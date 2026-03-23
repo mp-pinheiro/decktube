@@ -1,6 +1,6 @@
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore/lite'
 import { initFirebaseAuth, getFirebaseDb, isFirebaseReady, getFirebaseUser } from './firebase'
-import { getIdToken } from './oauth'
+import { getIdToken, refreshAccessToken } from './oauth'
 import { getHistoryEntries, replaceHistoryEntries, type HistoryEntry } from './historyStore'
 import { getAllPositions, replaceAllPositions, type PositionsMap } from './playbackStore'
 
@@ -10,7 +10,17 @@ const PLAYBACK_DEBOUNCE_MS = 30_000
 
 let historyTimer: ReturnType<typeof setTimeout> | null = null
 let playbackTimer: ReturnType<typeof setTimeout> | null = null
+let isSyncing = false
 let syncStatus: 'idle' | 'syncing' | 'synced' | 'offline' | 'unauthenticated' = 'idle'
+
+function isTokenExpired(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    return Date.now() >= payload.exp * 1000
+  } catch {
+    return true
+  }
+}
 
 function getUserDocRef() {
   const db = getFirebaseDb()
@@ -55,13 +65,25 @@ function mergePlayback(local: PositionsMap, remote: PositionsMap): PositionsMap 
 }
 
 export async function initSync(): Promise<void> {
-  const idToken = getIdToken()
-  if (!idToken) {
-    syncStatus = 'unauthenticated'
-    return
-  }
+  if (isSyncing) return
+  isSyncing = true
 
   try {
+    let idToken = getIdToken()
+    if (!idToken) {
+      syncStatus = 'unauthenticated'
+      return
+    }
+
+    if (isTokenExpired(idToken)) {
+      await refreshAccessToken()
+      idToken = getIdToken()
+      if (!idToken || isTokenExpired(idToken)) {
+        syncStatus = 'unauthenticated'
+        return
+      }
+    }
+
     syncStatus = 'syncing'
     const user = await initFirebaseAuth(idToken)
     const db = getFirebaseDb()
@@ -99,9 +121,12 @@ export async function initSync(): Promise<void> {
     }
 
     syncStatus = 'synced'
+    window.dispatchEvent(new Event('firestore-sync'))
   } catch (err) {
     console.warn('Firestore init sync failed:', err)
     syncStatus = 'offline'
+  } finally {
+    isSyncing = false
   }
 }
 

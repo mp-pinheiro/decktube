@@ -109,6 +109,12 @@ export default function HomePage() {
     }
   }, [activeTab, tabStates.recommended.fetched, fetchRecommended, tabStates.subscriptions.fetched, fetchSubscriptions, fetchHistory])
 
+  useEffect(() => {
+    const onSync = () => fetchHistory()
+    window.addEventListener('firestore-sync', onSync)
+    return () => window.removeEventListener('firestore-sync', onSync)
+  }, [fetchHistory])
+
   const loadMore = useCallback(async () => {
     const tab = activeTabRef.current
     const cont = tabStates[tab]?.continuation
