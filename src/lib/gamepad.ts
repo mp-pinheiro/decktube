@@ -28,6 +28,10 @@ export function setAppFocused(focused: boolean) {
   appFocused = focused
 }
 
+export function isAppFocused(): boolean {
+  return appFocused
+}
+
 function pollGamepads() {
   const isFocused = !document.hidden && document.hasFocus() && appFocused
 
