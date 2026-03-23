@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore/lite'
+import { doc, getDoc, setDoc } from 'firebase/firestore/lite'
 import { initFirebaseAuth, getFirebaseDb, isFirebaseReady, getFirebaseUser } from './firebase'
 import { getIdToken, refreshAccessToken } from './oauth'
 import { getHistoryEntries, replaceHistoryEntries, type HistoryEntry } from './historyStore'
@@ -126,6 +126,8 @@ export async function initSync(): Promise<void> {
     syncStatus = 'synced'
     lastSyncAt = Date.now()
     window.dispatchEvent(new Event('firestore-sync'))
+    syncHistory(getHistoryEntries())
+    syncPlayback(getAllPositions())
   } catch (err) {
     console.warn('Firestore init sync failed:', err)
     syncStatus = 'offline'
@@ -141,7 +143,7 @@ export function syncHistory(entries: HistoryEntry[]): void {
     const ref = getUserDocRef()
     if (!ref) return
     try {
-      await updateDoc(ref, { history: entries, updatedAt: Date.now() })
+      await setDoc(ref, { history: entries, updatedAt: Date.now() }, { merge: true })
     } catch (err) {
       console.warn('Firestore history sync failed:', err)
     }
@@ -155,7 +157,7 @@ export function syncPlayback(positions: PositionsMap): void {
     const ref = getUserDocRef()
     if (!ref) return
     try {
-      await updateDoc(ref, { playback: positions, updatedAt: Date.now() })
+      await setDoc(ref, { playback: positions, updatedAt: Date.now() }, { merge: true })
     } catch (err) {
       console.warn('Firestore playback sync failed:', err)
     }
