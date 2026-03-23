@@ -1,9 +1,11 @@
-import { lazy, Suspense, Component, type ReactNode } from 'react'
+import { lazy, Suspense, Component, useEffect, useRef, type ReactNode } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import Header from './Header'
 import { InputProvider } from '../contexts/InputProvider'
 import HelpButton from './HelpButton'
 import VirtualKeyboard from './VirtualKeyboard'
+import { isAuthenticated } from '../lib/oauth'
+import { initSync } from '../lib/firestoreSync'
 
 const LazyUpdateBanner = lazy(() => import('./UpdateBanner'))
 
@@ -19,6 +21,14 @@ class UpdateBannerErrorBoundary extends Component<
 export default function Layout() {
   const location = useLocation()
   const isWatchPage = location.pathname.startsWith('/watch/')
+
+  const syncStarted = useRef(false)
+  useEffect(() => {
+    if (!syncStarted.current && isAuthenticated()) {
+      syncStarted.current = true
+      initSync().catch(err => console.warn('Firestore sync init failed:', err))
+    }
+  }, [location.pathname])
 
   return (
     <InputProvider>

@@ -1,9 +1,10 @@
 import type { YouTubeVideo } from './youtube'
+import { syncHistory } from './firestoreSync'
 
 const STORAGE_KEY = 'yt_watch_history'
 const MAX_ENTRIES = 200
 
-interface HistoryEntry {
+export interface HistoryEntry {
   video: YouTubeVideo
   watchedAt: number
   position: number
@@ -35,6 +36,7 @@ export function recordHistory(video: YouTubeVideo, position: number, duration: n
     entries.length = MAX_ENTRIES
   }
   storeEntries(entries)
+  syncHistory(entries)
 }
 
 export function getHistory(): YouTubeVideo[] {
@@ -54,6 +56,7 @@ export function getHistory(): YouTubeVideo[] {
 export function removeFromHistory(videoId: string): void {
   const entries = loadEntries().filter(e => e.video.videoId !== videoId)
   storeEntries(entries)
+  syncHistory(entries)
 }
 
 export function clearHistory(): void {
@@ -62,4 +65,13 @@ export function clearHistory(): void {
   } catch {
     // localStorage may be unavailable
   }
+  syncHistory([])
+}
+
+export function getHistoryEntries(): HistoryEntry[] {
+  return loadEntries()
+}
+
+export function replaceHistoryEntries(entries: HistoryEntry[]): void {
+  storeEntries(entries)
 }

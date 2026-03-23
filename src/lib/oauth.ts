@@ -1,7 +1,9 @@
+import { signOutFirebase } from './firebase'
+
 const OAUTH_CONFIG = {
   clientId: import.meta.env.VITE_YOUTUBE_CLIENT_ID || '',
   clientSecret: import.meta.env.VITE_YOUTUBE_CLIENT_SECRET || '',
-  scope: 'http://gdata.youtube.com https://www.googleapis.com/auth/youtube',
+  scope: 'openid http://gdata.youtube.com https://www.googleapis.com/auth/youtube',
   deviceCodeUrl: '/oauth/device/code',
   tokenUrl: '/token',
 }
@@ -15,6 +17,7 @@ const STORAGE_KEYS = {
   VERIFICATION_URL: 'yt_verification_url',
   EXPIRES_IN: 'yt_device_expires_in',
   INTERVAL: 'yt_device_interval',
+  ID_TOKEN: 'yt_id_token',
 }
 
 export interface DeviceCodeResponse {
@@ -30,6 +33,7 @@ export interface TokenResponse {
   refresh_token?: string
   expires_in: number
   token_type: string
+  id_token?: string
 }
 
 export interface AuthState {
@@ -137,7 +141,14 @@ function storeToken(data: TokenResponse): void {
   if (data.refresh_token) {
     localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, data.refresh_token)
   }
+  if (data.id_token) {
+    localStorage.setItem(STORAGE_KEYS.ID_TOKEN, data.id_token)
+  }
   localStorage.setItem(STORAGE_KEYS.TOKEN_EXPIRES_AT, expiresAt.toString())
+}
+
+export function getIdToken(): string | null {
+  return localStorage.getItem(STORAGE_KEYS.ID_TOKEN)
 }
 
 function clearDeviceCode(): void {
@@ -199,6 +210,8 @@ export function logout(): void {
   localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN)
   localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN)
   localStorage.removeItem(STORAGE_KEYS.TOKEN_EXPIRES_AT)
+  localStorage.removeItem(STORAGE_KEYS.ID_TOKEN)
+  signOutFirebase().catch(() => {})
   clearDeviceCode()
 }
 

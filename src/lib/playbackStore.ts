@@ -1,12 +1,14 @@
+import { syncPlayback } from './firestoreSync'
+
 const STORAGE_KEY = 'yt_playback_positions'
 const MAX_ENTRIES = 200
 
-interface PositionEntry {
+export interface PositionEntry {
   position: number
   updatedAt: number
 }
 
-type PositionsMap = Record<string, PositionEntry>
+export type PositionsMap = Record<string, PositionEntry>
 
 function loadPositions(): PositionsMap {
   try {
@@ -41,6 +43,7 @@ export function savePlaybackPosition(videoId: string, position: number, duration
 
   map[videoId] = { position, updatedAt: Date.now() }
   storePositions(map)
+  syncPlayback(map)
 }
 
 export function getPlaybackPosition(videoId: string): number | null {
@@ -53,5 +56,14 @@ export function clearPlaybackPosition(videoId: string): void {
   if (videoId in map) {
     delete map[videoId]
     storePositions(map)
+    syncPlayback(map)
   }
+}
+
+export function getAllPositions(): PositionsMap {
+  return loadPositions()
+}
+
+export function replaceAllPositions(map: PositionsMap): void {
+  storePositions(map)
 }
