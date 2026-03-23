@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc } from 'firebase/firestore'
+import { doc, getDoc, setDoc, onSnapshot, type Unsubscribe } from 'firebase/firestore'
 import { initFirebaseAuth, getFirebaseDb, isFirebaseReady, getFirebaseUser } from './firebase'
 import { getIdToken } from './oauth'
 import { getHistoryEntries, replaceHistoryEntries, type HistoryEntry } from './historyStore'
@@ -13,6 +13,35 @@ let historyTimer: ReturnType<typeof setTimeout> | null = null
 let playbackTimer: ReturnType<typeof setTimeout> | null = null
 let isSyncing = false
 let syncStatus: 'idle' | 'syncing' | 'synced' | 'offline' | 'unauthenticated' = 'idle'
+let realtimeUnsub: Unsubscribe | null = null
+let lastWrittenAt = 0
+
+function startRealtimeListener(docRef: ReturnType<typeof doc>) {
+  if (realtimeUnsub) return
+  realtimeUnsub = onSnapshot(docRef, (snapshot) => {
+    if (!snapshot.exists()) return
+    const data = snapshot.data() as {
+      history?: HistoryEntry[]
+      playback?: PositionsMap
+      updatedAt?: number
+    }
+    const remoteUpdatedAt = data.updatedAt || 0
+    if (remoteUpdatedAt <= lastWrittenAt) return
+    lastWrittenAt = remoteUpdatedAt
+    if (data.history) replaceHistoryEntries(data.history)
+    if (data.playback) replaceAllPositions(data.playback)
+    window.dispatchEvent(new Event('firestore-sync'))
+    syncLog('info', 'realtime: update from other device', `history=${data.history?.length ?? 0} playback=${Object.keys(data.playback || {}).length}`)
+  }, (err) => {
+    syncLog('error', 'realtime: listener error', String(err))
+    realtimeUnsub = null
+  })
+}
+
+export function stopRealtimeListener() {
+  realtimeUnsub?.()
+  realtimeUnsub = null
+}
 
 function getUserDocRef() {
   const db = getFirebaseDb()
@@ -100,23 +129,28 @@ export async function initSync(): Promise<void> {
       replaceHistoryEntries(mergedHistory)
       replaceAllPositions(mergedPlayback)
 
+      const now = Date.now()
       await setDoc(docRef, {
         history: mergedHistory,
         playback: mergedPlayback,
-        updatedAt: Date.now(),
+        updatedAt: now,
       })
+      lastWrittenAt = now
 
       syncLog('info', 'initSync: merged', `local=${localHistory.length}/${Object.keys(localPlayback).length} remote=${(remote.history || []).length}/${Object.keys(remote.playback || {}).length} merged=${mergedHistory.length}/${Object.keys(mergedPlayback).length}`)
     } else {
+      const now = Date.now()
       await setDoc(docRef, {
         history: localHistory,
         playback: localPlayback,
-        updatedAt: Date.now(),
+        updatedAt: now,
       })
+      lastWrittenAt = now
       syncLog('info', 'initSync: created new doc', `history=${localHistory.length} playback=${Object.keys(localPlayback).length}`)
     }
 
     syncStatus = 'synced'
+    startRealtimeListener(docRef)
     window.dispatchEvent(new Event('firestore-sync'))
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -139,7 +173,9 @@ export function syncHistory(entries: HistoryEntry[]): void {
     const ref = getUserDocRef()
     if (!ref) return
     try {
-      await setDoc(ref, { history: entries, updatedAt: Date.now() }, { merge: true })
+      const now = Date.now()
+      await setDoc(ref, { history: entries, updatedAt: now }, { merge: true })
+      lastWrittenAt = now
     } catch (err) {
       syncLog('error', 'syncHistory: failed', String(err))
     }
@@ -153,7 +189,9 @@ export function syncPlayback(positions: PositionsMap): void {
     const ref = getUserDocRef()
     if (!ref) return
     try {
-      await setDoc(ref, { playback: positions, updatedAt: Date.now() }, { merge: true })
+      const now = Date.now()
+      await setDoc(ref, { playback: positions, updatedAt: now }, { merge: true })
+      lastWrittenAt = now
     } catch (err) {
       syncLog('error', 'syncPlayback: failed', String(err))
     }

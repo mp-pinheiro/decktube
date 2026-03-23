@@ -92,6 +92,8 @@ export function isFirebaseReady(): boolean {
 }
 
 export async function signOutFirebase(): Promise<void> {
+  const { stopRealtimeListener } = await import('./firestoreSync')
+  stopRealtimeListener()
   if (auth) {
     const { signOut } = await import('firebase/auth')
     await signOut(auth)
