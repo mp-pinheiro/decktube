@@ -33,7 +33,7 @@ export default function VideoCard({ video, showChannel = true, showDuration = tr
           />
         )}
         {showDuration && video.duration && video.duration > 0 && (
-          <div className="absolute bottom-2 right-2 rounded-sm bg-black/80 px-1.5 py-0.5 text-[10px] font-bold text-white backdrop-blur-sm">
+          <div className="absolute bottom-2 right-2 rounded-sm bg-black/80 px-1.5 py-0.5 text-sm font-bold text-white backdrop-blur-sm">
             {formatDuration(video.duration)}
           </div>
         )}
@@ -46,16 +46,16 @@ export default function VideoCard({ video, showChannel = true, showDuration = tr
 
       <div className="h-[4.5rem] flex-shrink-0 flex gap-2 px-1">
         <div className="flex flex-col gap-0.5 overflow-hidden">
-          <h3 className="line-clamp-2 text-xs font-semibold text-zinc-100 leading-snug group-hover:text-blue-400 transition-colors">
+          <h3 className="line-clamp-2 text-base font-semibold text-zinc-100 leading-snug group-hover:text-blue-400 transition-colors">
             {video.title}
           </h3>
-          <div className="flex flex-col text-[11px] text-zinc-400">
+          <div className="flex flex-col text-sm text-zinc-400">
             {showChannel && <span>{video.channelName}</span>}
             <div className="flex items-center gap-1">
               <span>{video.viewCount ? formatViews(video.viewCount) : ''}</span>
               {video.publishedTimeText && (
                 <>
-                  <span className="text-[8px] opacity-50">•</span>
+                  <span className="text-xs opacity-50">•</span>
                   <span>{video.publishedTimeText}</span>
                 </>
               )}
