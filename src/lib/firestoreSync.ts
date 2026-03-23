@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc } from 'firebase/firestore/lite'
+import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { initFirebaseAuth, getFirebaseDb, isFirebaseReady, getFirebaseUser } from './firebase'
 import { getIdToken } from './oauth'
 import { getHistoryEntries, replaceHistoryEntries, type HistoryEntry } from './historyStore'
@@ -21,16 +21,27 @@ function getUserDocRef() {
   return doc(db, 'users', user.uid)
 }
 
-function mergeHistory(local: HistoryEntry[], remote: HistoryEntry[]): HistoryEntry[] {
+function mergeHistoryForSync(
+  local: HistoryEntry[],
+  remote: HistoryEntry[],
+  remoteUpdatedAt: number,
+): HistoryEntry[] {
   const map = new Map<string, HistoryEntry>()
 
   for (const entry of remote) {
     map.set(entry.video.videoId, entry)
   }
+
   for (const entry of local) {
-    const existing = map.get(entry.video.videoId)
-    if (!existing || entry.watchedAt > existing.watchedAt) {
-      map.set(entry.video.videoId, entry)
+    const videoId = entry.video.videoId
+    const remoteEntry = map.get(videoId)
+
+    if (remoteEntry) {
+      if (entry.watchedAt > remoteEntry.watchedAt) {
+        map.set(videoId, entry)
+      }
+    } else if (entry.watchedAt > remoteUpdatedAt) {
+      map.set(videoId, entry)
     }
   }
 
@@ -79,9 +90,11 @@ export async function initSync(): Promise<void> {
       const remote = snapshot.data() as {
         history?: HistoryEntry[]
         playback?: PositionsMap
+        updatedAt?: number
       }
 
-      const mergedHistory = mergeHistory(localHistory, remote.history || [])
+      const remoteUpdatedAt = remote.updatedAt || 0
+      const mergedHistory = mergeHistoryForSync(localHistory, remote.history || [], remoteUpdatedAt)
       const mergedPlayback = mergePlayback(localPlayback, remote.playback || {})
 
       replaceHistoryEntries(mergedHistory)
@@ -93,7 +106,7 @@ export async function initSync(): Promise<void> {
         updatedAt: Date.now(),
       })
 
-      syncLog('info', 'initSync: merged', `history=${mergedHistory.length} playback=${Object.keys(mergedPlayback).length}`)
+      syncLog('info', 'initSync: merged', `local=${localHistory.length}/${Object.keys(localPlayback).length} remote=${(remote.history || []).length}/${Object.keys(remote.playback || {}).length} merged=${mergedHistory.length}/${Object.keys(mergedPlayback).length}`)
     } else {
       await setDoc(docRef, {
         history: localHistory,
@@ -126,12 +139,7 @@ export function syncHistory(entries: HistoryEntry[]): void {
     const ref = getUserDocRef()
     if (!ref) return
     try {
-      const snapshot = await getDoc(ref)
-      const remote = snapshot.exists()
-        ? (snapshot.data() as { history?: HistoryEntry[] })
-        : {}
-      const merged = mergeHistory(entries, remote.history || [])
-      await setDoc(ref, { history: merged, updatedAt: Date.now() }, { merge: true })
+      await setDoc(ref, { history: entries, updatedAt: Date.now() }, { merge: true })
     } catch (err) {
       syncLog('error', 'syncHistory: failed', String(err))
     }
@@ -145,12 +153,7 @@ export function syncPlayback(positions: PositionsMap): void {
     const ref = getUserDocRef()
     if (!ref) return
     try {
-      const snapshot = await getDoc(ref)
-      const remote = snapshot.exists()
-        ? (snapshot.data() as { playback?: PositionsMap })
-        : {}
-      const merged = mergePlayback(positions, remote.playback || {})
-      await setDoc(ref, { playback: merged, updatedAt: Date.now() }, { merge: true })
+      await setDoc(ref, { playback: positions, updatedAt: Date.now() }, { merge: true })
     } catch (err) {
       syncLog('error', 'syncPlayback: failed', String(err))
     }
