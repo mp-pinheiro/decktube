@@ -23,14 +23,16 @@ export default function Layout() {
   const isWatchPage = location.pathname.startsWith('/watch/')
 
   useEffect(() => {
-    const trySync = () => {
-      if (isAuthenticated()) {
+    if (isAuthenticated()) {
+      initSync().catch(err => console.warn('Firestore sync init failed:', err))
+    }
+  }, [location.pathname])
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && isAuthenticated()) {
         initSync().catch(err => console.warn('Firestore sync init failed:', err))
       }
-    }
-    trySync()
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') trySync()
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)

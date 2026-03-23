@@ -11,6 +11,8 @@ const PLAYBACK_DEBOUNCE_MS = 30_000
 let historyTimer: ReturnType<typeof setTimeout> | null = null
 let playbackTimer: ReturnType<typeof setTimeout> | null = null
 let isSyncing = false
+let lastSyncAt = 0
+const SYNC_COOLDOWN_MS = 30_000
 let syncStatus: 'idle' | 'syncing' | 'synced' | 'offline' | 'unauthenticated' = 'idle'
 
 function isTokenExpired(token: string): boolean {
@@ -66,6 +68,7 @@ function mergePlayback(local: PositionsMap, remote: PositionsMap): PositionsMap 
 
 export async function initSync(): Promise<void> {
   if (isSyncing) return
+  if (syncStatus === 'synced' && Date.now() - lastSyncAt < SYNC_COOLDOWN_MS) return
   isSyncing = true
 
   try {
@@ -121,6 +124,7 @@ export async function initSync(): Promise<void> {
     }
 
     syncStatus = 'synced'
+    lastSyncAt = Date.now()
     window.dispatchEvent(new Event('firestore-sync'))
   } catch (err) {
     console.warn('Firestore init sync failed:', err)
