@@ -140,6 +140,23 @@ export default defineConfig(({ mode }) => {
             })
           },
         },
+        '/api/stats': {
+          target: 'https://s.youtube.com',
+          changeOrigin: true,
+          secure: true,
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq, req) => {
+              if (req.headers['authorization']) {
+                proxyReq.setHeader('Authorization', req.headers['authorization'])
+              }
+              proxyReq.setHeader('Origin', 'https://www.youtube.com')
+              proxyReq.setHeader('Referer', 'https://www.youtube.com/')
+            })
+            proxy.on('error', (err) => {
+              console.error('Stats proxy error:', err.message)
+            })
+          },
+        },
       },
     },
   }

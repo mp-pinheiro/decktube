@@ -2,7 +2,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import HelpButton from '../components/HelpButton'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { MediaPlayer, type MediaPlayerClass, type Representation } from 'dashjs'
-import { getVideoDetails, getPlayerData, generateMpd, type YouTubeVideo, type MuxedFormat } from '../lib/youtube'
+import { getVideoDetails, getPlayerData, generateMpd, type YouTubeVideo, type MuxedFormat, generateCpn, reportPlaybackStart, reportWatchtime } from '../lib/youtube'
 import { savePlaybackPosition, getPlaybackPosition, clearPlaybackPosition } from '../lib/playbackStore'
 import { useInputContext } from '../contexts/InputProvider'
 import QualitySelector, { type QualityOption } from '../components/QualitySelector'
@@ -53,6 +53,9 @@ export default function WatchPage() {
   const [seekDelta, setSeekDelta] = useState(0)
   const [volumeAction, setVolumeAction] = useState(0)
   const [qualityAction, setQualityAction] = useState(0)
+
+  const cpnRef = useRef<string>(generateCpn())
+  const playbackStartedRef = useRef(false)
 
   const destroyDash = useCallback(() => {
     if (initTimerRef.current) {
@@ -156,6 +159,9 @@ export default function WatchPage() {
     setCurrentQuality('auto')
     destroyDash()
 
+    cpnRef.current = generateCpn()
+    playbackStartedRef.current = false
+
     let cancelled = false
 
     async function load() {
@@ -208,9 +214,28 @@ export default function WatchPage() {
       }
     }, 15000)
 
+    const watchtimeInterval = setInterval(() => {
+      const video = videoElRef.current
+      if (!video || !playbackStartedRef.current || video.paused) return
+      const dp = dashPlayerRef.current
+      const duration = dp ? dp.duration() : video.duration
+      if (duration > 0 && !isNaN(duration)) {
+        const segmentStart = Math.max(0, video.currentTime - 10)
+        reportWatchtime(
+          videoId!,
+          cpnRef.current,
+          video.currentTime,
+          duration,
+          [{ st: segmentStart, et: video.currentTime }],
+          'playing'
+        )
+      }
+    }, 10000)
+
     return () => {
       cancelled = true
       clearInterval(saveInterval)
+      clearInterval(watchtimeInterval)
       const video = videoElRef.current
       const dp = dashPlayerRef.current
       const duration = dp ? dp.duration() : (video ? video.duration : 0)
@@ -224,9 +249,28 @@ export default function WatchPage() {
   useEffect(() => {
     const video = videoElRef.current
     if (!video) return
-    const onPlay = () => setPaused(false)
-    const onPause = () => setPaused(true)
-    const onEnded = () => { if (videoId) clearPlaybackPosition(videoId) }
+
+    const onPlay = () => {
+      setPaused(false)
+
+      if (!playbackStartedRef.current && videoId) {
+        playbackStartedRef.current = true
+        const dp = dashPlayerRef.current
+        const duration = dp ? dp.duration() : video.duration
+        if (duration > 0 && !isNaN(duration)) {
+          reportPlaybackStart(videoId, cpnRef.current, duration)
+        }
+      }
+    }
+
+    const onPause = () => {
+      setPaused(true)
+    }
+
+    const onEnded = () => {
+      if (videoId) clearPlaybackPosition(videoId)
+    }
+
     video.addEventListener('play', onPlay)
     video.addEventListener('pause', onPause)
     video.addEventListener('ended', onEnded)

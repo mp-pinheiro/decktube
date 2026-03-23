@@ -869,3 +869,91 @@ export async function getChannelVideos(channelId: string): Promise<YouTubeVideo[
     return []
   }
 }
+
+const CPN_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+
+export function generateCpn(): string {
+  let cpn = ''
+  for (let i = 0; i < 16; i++) {
+    cpn += CPN_CHARS.charAt(Math.floor(Math.random() * CPN_CHARS.length))
+  }
+  return cpn
+}
+
+export interface WatchSegment {
+  st: number
+  et: number
+}
+
+async function statsRequest(endpoint: string, params: Record<string, string | number>): Promise<void> {
+  const token = await getToken()
+  const urlParams = new URLSearchParams(
+    Object.entries(params).map(([k, v]) => [k, String(v)])
+  )
+
+  const headers: Record<string, string> = {}
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+
+  try {
+    const response = await fetch(`/api/stats/${endpoint}?${urlParams}`, {
+      method: 'GET',
+      headers,
+    })
+    if (!response.ok) {
+      console.warn(`Stats request failed: ${response.status}`)
+    }
+  } catch (error) {
+    console.warn('Stats request error:', error)
+  }
+}
+
+export async function reportPlaybackStart(
+  videoId: string,
+  cpn: string,
+  duration: number
+): Promise<void> {
+  await statsRequest('playback', {
+    ns: 'yt',
+    el: 'detailpage',
+    cpn,
+    docid: videoId,
+    ver: 2,
+    cmt: 0,
+    len: Math.floor(duration),
+    c: 'TVHTML5',
+    cver: TV_CLIENT_CONFIG.clientVersion,
+    cplayer: 'UNIPLAYER',
+    hl: 'en_US',
+  })
+}
+
+export async function reportWatchtime(
+  videoId: string,
+  cpn: string,
+  currentTime: number,
+  duration: number,
+  segments: WatchSegment[],
+  state: 'playing' | 'paused' = 'playing'
+): Promise<void> {
+  const st = segments.map(s => s.st.toFixed(3)).join(',')
+  const et = segments.map(s => s.et.toFixed(3)).join(',')
+
+  await statsRequest('watchtime', {
+    ns: 'yt',
+    el: 'detailpage',
+    cpn,
+    docid: videoId,
+    ver: 2,
+    cmt: currentTime.toFixed(3),
+    len: Math.floor(duration),
+    st,
+    et,
+    state,
+    c: 'TVHTML5',
+    cver: TV_CLIENT_CONFIG.clientVersion,
+    cplayer: 'UNIPLAYER',
+    hl: 'en_US',
+  })
+}
