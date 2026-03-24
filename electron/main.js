@@ -313,6 +313,18 @@ async function initAutoUpdater() {
   })
 }
 
+ipcMain.handle('app-restart', async () => {
+  logToFile('App restarting to recover gamepad')
+  if (proxyServer) {
+    await new Promise(resolve => proxyServer.close(resolve))
+  }
+  const { spawn } = await import('child_process')
+  const appPath = process.env.APPIMAGE || process.execPath
+  logToFile(`Spawning: ${appPath}`)
+  spawn(appPath, [], { detached: true, stdio: 'ignore' }).unref()
+  app.exit(0)
+})
+
 app.whenReady().then(async () => {
   console.log(`[Log] Writing to ${logPath}`)
   logToFile('App ready')

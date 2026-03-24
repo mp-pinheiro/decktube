@@ -4,6 +4,7 @@ import Header from './Header'
 import { InputProvider } from '../contexts/InputProvider'
 import HelpButton from './HelpButton'
 import VirtualKeyboard from './VirtualKeyboard'
+import GamepadToast from './GamepadToast'
 import { isAuthenticated } from '../lib/oauth'
 import { initSync } from '../lib/firestoreSync'
 
@@ -50,6 +51,7 @@ export default function Layout() {
         {!isWatchPage && <HelpButton />}
       </div>
       <VirtualKeyboard />
+      <GamepadToast />
       <UpdateBannerErrorBoundary>
         <Suspense fallback={null}>
           <LazyUpdateBanner />

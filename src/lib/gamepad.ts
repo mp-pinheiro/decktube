@@ -17,6 +17,11 @@ const GAMEPAD_BUTTONS = {
 
 type GamepadButtonHandler = (button: string, pressed: boolean) => void
 
+function emitToast(message: string, type: 'info' | 'warning' = 'info') {
+  console.log('[Gamepad] Toast:', message)
+  window.dispatchEvent(new CustomEvent('gamepad-toast', { detail: { message, type } }))
+}
+
 function isSteamController(gamepad: Gamepad): boolean {
   const id = gamepad.id.toLowerCase()
   return id.includes('28de') || id.includes('valve') || id.includes('steam')
@@ -40,6 +45,11 @@ const previousButtonStates = new Map<number, boolean[]>()
 let wasFocused = true
 let windowFocused = true
 let windowFocusInitialised = false
+let hadGamepads = false
+let restartAttempted = false
+let gamepadLossTimer: ReturnType<typeof setTimeout> | null = null
+let initialSetupDone = false
+let initialSetupTimer: ReturnType<typeof setTimeout> | null = null
 
 function initWindowFocusTracking() {
   if (windowFocusInitialised) return
@@ -106,17 +116,44 @@ export function initGamepad(handler: GamepadButtonHandler) {
     animationFrameId = requestAnimationFrame(pollGamepads)
   }
 
+  if (!initialSetupTimer) {
+    initialSetupTimer = setTimeout(() => { initialSetupDone = true }, 2000)
+  }
+
   const handleConnect = (e: GamepadEvent) => {
+    hadGamepads = true
+    if (gamepadLossTimer) { clearTimeout(gamepadLossTimer); gamepadLossTimer = null }
     const isSteam = isSteamController(e.gamepad)
     console.log('[Gamepad] Connected:', e.gamepad.id, 'at index', e.gamepad.index, isSteam ? '(steam)' : '(raw hardware)')
     if (!isSteam) {
       console.log('[Gamepad] Non-Steam controller detected; will prefer Steam virtual gamepad if available')
     }
+    if (initialSetupDone && !isSteam) {
+      emitToast('Controller connected')
+    }
   }
 
   const handleDisconnect = (e: GamepadEvent) => {
+    const isSteam = isSteamController(e.gamepad)
     console.log('[Gamepad] Disconnected:', e.gamepad.id, 'at index', e.gamepad.index)
     previousButtonStates.delete(e.gamepad.index)
+
+    if (initialSetupDone && !isSteam) {
+      emitToast('Controller disconnected')
+    }
+
+    const remaining = navigator.getGamepads().some(gp => gp !== null)
+    if (hadGamepads && !remaining && !restartAttempted) {
+      console.log('[Gamepad] All gamepads lost – will restart in 3s if none reconnect')
+      gamepadLossTimer = setTimeout(() => {
+        if (!navigator.getGamepads().some(gp => gp !== null)) {
+          console.log('[Gamepad] Restarting app to recover gamepad')
+          restartAttempted = true
+          emitToast('Reconnecting controller — restarting...', 'warning')
+          setTimeout(() => window.electronAPI?.restartApp(), 2000)
+        }
+      }, 3000)
+    }
   }
 
   window.addEventListener('gamepadconnected', handleConnect)
