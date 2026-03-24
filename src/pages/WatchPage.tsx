@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { MediaPlayer, type MediaPlayerClass, type Representation } from 'dashjs'
 import { getVideoDetails, getPlayerData, generateMpd, getRelatedVideos, type YouTubeVideo, type MuxedFormat, generateCpn, reportPlaybackStart, reportWatchtime } from '../lib/youtube'
 import { savePlaybackPosition, getPlaybackPosition, clearPlaybackPosition } from '../lib/playbackStore'
+import { markWatched } from '../lib/watchedStore'
 import { getPreferences, setVolume as persistVolume, setQuality as persistQuality } from '../lib/preferencesStore'
 import { useInputContext } from '../contexts/InputProvider'
 import QualitySelector, { type QualityOption } from '../components/QualitySelector'
@@ -228,6 +229,9 @@ export default function WatchPage() {
       const duration = dp ? dp.duration() : video.duration
       if (duration > 0 && !isNaN(duration)) {
         savePlaybackPosition(videoId!, video.currentTime, duration)
+        if (video.currentTime / duration >= 0.95) {
+          markWatched(videoId!)
+        }
       }
     }, 15000)
 
@@ -295,17 +299,31 @@ export default function WatchPage() {
     }
 
     const onEnded = () => {
-      if (videoId) clearPlaybackPosition(videoId)
+      if (videoId) {
+        clearPlaybackPosition(videoId)
+        markWatched(videoId)
+      }
       if (nextVideoRef.current) setAutoPlayVisible(true)
+    }
+
+    const onSeeked = () => {
+      if (!videoId) return
+      const dp = dashPlayerRef.current
+      const duration = dp ? dp.duration() : video.duration
+      if (duration > 0 && !isNaN(duration) && video.currentTime / duration >= 0.95) {
+        markWatched(videoId)
+      }
     }
 
     video.addEventListener('play', onPlay)
     video.addEventListener('pause', onPause)
     video.addEventListener('ended', onEnded)
+    video.addEventListener('seeked', onSeeked)
     return () => {
       video.removeEventListener('play', onPlay)
       video.removeEventListener('pause', onPause)
       video.removeEventListener('ended', onEnded)
+      video.removeEventListener('seeked', onSeeked)
     }
   }, [videoId])
 
@@ -322,12 +340,36 @@ export default function WatchPage() {
     }
   }, [])
 
-  const seek = useCallback((delta: number) => {
+  const seekHoldStartRef = useRef<number>(0)
+  const seekHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const seek = useCallback((direction: number) => {
     const video = videoElRef.current
     if (!video) return
+
+    const now = Date.now()
+    if (seekHoldTimerRef.current) clearTimeout(seekHoldTimerRef.current)
+
+    if (!seekHoldStartRef.current) {
+      seekHoldStartRef.current = now
+    }
+
+    const held = now - seekHoldStartRef.current
+    const SEEK_TIERS = [
+      { after: 3000, seek: 60 },
+      { after: 1000, seek: 30 },
+      { after: 0, seek: 10 },
+    ]
+    const amount = SEEK_TIERS.find(t => held >= t.after)!.seek
+
+    const delta = direction * amount
     video.currentTime = Math.max(0, video.currentTime + delta)
     setSeekDelta(delta)
     setSeekAction(c => c + 1)
+
+    seekHoldTimerRef.current = setTimeout(() => {
+      seekHoldStartRef.current = 0
+    }, 400)
   }, [])
 
   const setVolume = useCallback((newVolume: number) => {
@@ -413,8 +455,8 @@ export default function WatchPage() {
       next: handleAutoPlay,
       nav_up: () => setVolume(Math.min(100, volume + 10)),
       nav_down: () => setVolume(Math.max(0, volume - 10)),
-      nav_left: () => seek(-10),
-      nav_right: () => seek(10),
+      nav_left: () => seek(-1),
+      nav_right: () => seek(1),
     })
     return () => unregisterActions()
   }, [registerActions, unregisterActions, togglePlay, goToChannel, toggleFullscreen, toggleQuality, handleAutoPlay, seek, setVolume, volume])
