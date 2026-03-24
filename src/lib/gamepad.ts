@@ -17,11 +17,9 @@ const GAMEPAD_BUTTONS = {
 
 type GamepadButtonHandler = (button: string, pressed: boolean) => void
 
-const STEAM_VENDOR_ID = '28de'
-
-function getVendorId(gamepad: Gamepad): string | null {
-  const match = gamepad.id.match(/Vendor:\s*([0-9a-fA-F]{4})/)
-  return match ? match[1].toLowerCase() : null
+function isSteamController(gamepad: Gamepad): boolean {
+  const id = gamepad.id.toLowerCase()
+  return id.includes('28de') || id.includes('valve') || id.includes('steam')
 }
 
 function filterGamepads(raw: (Gamepad | null)[]): Gamepad[] {
@@ -30,7 +28,7 @@ function filterGamepads(raw: (Gamepad | null)[]): Gamepad[] {
   for (const gp of raw) {
     if (!gp) continue
     all.push(gp)
-    if (getVendorId(gp) === STEAM_VENDOR_ID) steam.push(gp)
+    if (isSteamController(gp)) steam.push(gp)
   }
   return steam.length > 0 ? steam : all
 }
@@ -91,9 +89,9 @@ export function initGamepad(handler: GamepadButtonHandler) {
   }
 
   const handleConnect = (e: GamepadEvent) => {
-    const vid = getVendorId(e.gamepad)
-    console.log('[Gamepad] Connected:', e.gamepad.id, 'at index', e.gamepad.index, 'vendor:', vid ?? 'unknown')
-    if (vid && vid !== STEAM_VENDOR_ID) {
+    const isSteam = isSteamController(e.gamepad)
+    console.log('[Gamepad] Connected:', e.gamepad.id, 'at index', e.gamepad.index, isSteam ? '(steam)' : '(raw hardware)')
+    if (!isSteam) {
       console.log('[Gamepad] Non-Steam controller detected; will prefer Steam virtual gamepad if available')
     }
   }
