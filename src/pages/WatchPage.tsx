@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { MediaPlayer, type MediaPlayerClass, type Representation } from 'dashjs'
 import { getVideoDetails, getPlayerData, generateMpd, getRelatedVideos, type YouTubeVideo, type MuxedFormat, generateCpn, reportPlaybackStart, reportWatchtime } from '../lib/youtube'
 import { savePlaybackPosition, getPlaybackPosition, clearPlaybackPosition } from '../lib/playbackStore'
+import { getPreferences, setVolume as persistVolume, setQuality as persistQuality } from '../lib/preferencesStore'
 import { useInputContext } from '../contexts/InputProvider'
 import QualitySelector, { type QualityOption } from '../components/QualitySelector'
 import PlayerOverlay from '../components/PlayerOverlay'
@@ -35,9 +36,10 @@ export default function WatchPage() {
   const blobUrlRef = useRef<string | null>(null)
   const { registerActions, unregisterActions } = useInputContext()
 
-  const [volume, setVolumeState] = useState(100)
+  const [volume, setVolumeState] = useState(() => getPreferences().volume)
   const volumeRef = useRef(volume)
   volumeRef.current = volume
+  const preferredQuality = useRef(getPreferences().quality)
 
   const [videoData, setVideoData] = useState<YouTubeVideo | null>(null)
   const [qualityMenuOpen, setQualityMenuOpen] = useState(false)
@@ -107,13 +109,21 @@ export default function WatchPage() {
         initTimerRef.current = null
       }
       const reps = dp.getRepresentationsByType('video')
-      if (reps?.length) {
-        setDashQualities(buildQualityOptions(reps))
-      }
+      const opts = reps?.length ? buildQualityOptions(reps) : []
+      if (opts.length) setDashQualities(opts)
       dp.setVolume(volumeRef.current / 100)
       const saved = getPlaybackPosition(vid)
       if (saved !== null && videoElRef.current) {
         videoElRef.current.currentTime = saved
+      }
+      const pref = preferredQuality.current
+      if (pref !== 'Auto') {
+        const match = opts.find(q => q.label === pref)
+        if (match && match.value !== 'auto') {
+          dp.updateSettings({ streaming: { abr: { autoSwitchBitrate: { video: false } } } })
+          dp.setRepresentationForTypeById('video', match.value, true)
+          setCurrentQuality(match.value)
+        }
       }
       setError(null)
       setLoading(false)
@@ -323,6 +333,7 @@ export default function WatchPage() {
   const setVolume = useCallback((newVolume: number) => {
     const clamped = Math.min(100, Math.max(0, newVolume))
     setVolumeState(clamped)
+    persistVolume(clamped)
     if (dashPlayerRef.current) {
       dashPlayerRef.current.setVolume(clamped / 100)
     } else if (videoElRef.current) {
@@ -336,6 +347,7 @@ export default function WatchPage() {
       if (dashPlayerRef.current) {
         dashPlayerRef.current.updateSettings({ streaming: { abr: { autoSwitchBitrate: { video: true } } } })
         setCurrentQuality('auto')
+        persistQuality('Auto')
         setQualityAction(c => c + 1)
       }
     } else {
@@ -343,9 +355,11 @@ export default function WatchPage() {
       dashPlayerRef.current.updateSettings({ streaming: { abr: { autoSwitchBitrate: { video: false } } } })
       dashPlayerRef.current.setRepresentationForTypeById('video', value, true)
       setCurrentQuality(value)
+      const match = dashQualities.find(q => q.value === value)
+      if (match) persistQuality(match.label)
       setQualityAction(c => c + 1)
     }
-  }, [])
+  }, [dashQualities])
 
   const toggleFullscreen = useCallback(() => {
     const playerContainer = document.getElementById('video-player-container')
