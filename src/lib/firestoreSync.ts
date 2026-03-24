@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, deleteDoc, onSnapshot, type Unsubscribe } from 'firebase/firestore'
+import { doc, getDoc, setDoc, onSnapshot, type Unsubscribe } from 'firebase/firestore'
 import { initFirebaseAuth, getFirebaseDb, isFirebaseReady, getFirebaseUser } from './firebase'
 import { getIdToken } from './oauth'
 import { getHistoryEntries, replaceHistoryEntries, type HistoryEntry } from './historyStore'
@@ -22,7 +22,7 @@ let isSyncing = false
 let syncStatus: 'idle' | 'syncing' | 'synced' | 'offline' | 'unauthenticated' = 'idle'
 let realtimeUnsub: Unsubscribe | null = null
 let lastWrittenAt = 0
-let hashedUid: string | null = null
+let userUid: string | null = null
 let initialSyncDone = false
 let listenerRetryCount = 0
 
@@ -33,12 +33,6 @@ interface PendingWrite {
 }
 let offlineQueue: PendingWrite[] = []
 let onlineListenerAttached = false
-
-async function hashUid(uid: string): Promise<string> {
-  const data = new TextEncoder().encode(uid)
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('')
-}
 
 function enqueue(write: PendingWrite) {
   const idx = offlineQueue.findIndex(w => w.type === write.type)
@@ -111,15 +105,15 @@ export function stopRealtimeListener() {
   realtimeUnsub?.()
   realtimeUnsub = null
   initialSyncDone = false
-  hashedUid = null
+  userUid = null
   listenerRetryCount = 0
 }
 
 function getUserDocRef() {
   const db = getFirebaseDb()
   const user = getFirebaseUser()
-  if (!db || !user || !hashedUid) return null
-  return doc(db, 'users', hashedUid)
+  if (!db || !user || !userUid) return null
+  return doc(db, 'users', userUid)
 }
 
 function mergeHistoryForSync(
@@ -192,22 +186,9 @@ export async function initSync(): Promise<void> {
     const db = getFirebaseDb()
     if (!db) throw new Error('Firestore not initialized')
 
-    hashedUid = await hashUid(user.uid)
-
-    // Migration: move plaintext UID doc to hashed doc
-    const oldDocRef = doc(db, 'users', user.uid)
-    const docRef = doc(db, 'users', hashedUid)
-    const [oldSnapshot, newSnapshot] = await Promise.all([getDoc(oldDocRef), getDoc(docRef)])
-
-    let snapshot = newSnapshot
-    if (oldSnapshot.exists() && !newSnapshot.exists()) {
-      syncLog('info', 'initSync: migrating plaintext UID doc to hashed doc')
-      await setDoc(docRef, oldSnapshot.data())
-      await deleteDoc(oldDocRef)
-      snapshot = oldSnapshot
-    } else if (oldSnapshot.exists()) {
-      await deleteDoc(oldDocRef)
-    }
+    userUid = user.uid
+    const docRef = doc(db, 'users', userUid)
+    const snapshot = await getDoc(docRef)
 
     const localHistory = getHistoryEntries()
     const localPlayback = getAllPositions()
