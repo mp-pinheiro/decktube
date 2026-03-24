@@ -14,6 +14,7 @@ interface PagedVideoGridProps {
   continuation?: string | null
   onLoadMore?: () => void
   showChannel?: boolean
+  showWatchedBadge?: boolean
   emptyMessage?: string
   initialPageIndex?: number
   initialFocusIndex?: number
@@ -27,6 +28,7 @@ export default function PagedVideoGrid({
   continuation = null,
   onLoadMore,
   showChannel = true,
+  showWatchedBadge = false,
   emptyMessage = 'No videos found',
   initialPageIndex,
   initialFocusIndex,
@@ -153,7 +155,7 @@ export default function PagedVideoGrid({
       className="grid grid-cols-3 grid-rows-2 gap-x-4 gap-y-3 flex-1 min-h-0"
     >
       {pageVideos.map((video) => (
-        <VideoCard key={video.videoId} video={video} showChannel={showChannel} />
+        <VideoCard key={video.videoId} video={video} showChannel={showChannel} showWatchedBadge={showWatchedBadge} />
       ))}
     </motion.div>
   )

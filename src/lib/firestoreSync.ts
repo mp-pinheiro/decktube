@@ -4,17 +4,20 @@ import { getIdToken } from './oauth'
 import { getHistoryEntries, replaceHistoryEntries, type HistoryEntry } from './historyStore'
 import { getAllPositions, replaceAllPositions, type PositionsMap } from './playbackStore'
 import { getPreferences, replacePreferences, type UserPreferences } from './preferencesStore'
+import { getWatchedMap, replaceWatchedMap, type WatchedMap } from './watchedStore'
 import { syncLog } from './syncLog'
 
 const MAX_ENTRIES = 200
 const HISTORY_DEBOUNCE_MS = 500
 const PLAYBACK_DEBOUNCE_MS = 30_000
 const PREFERENCES_DEBOUNCE_MS = 500
+const WATCHED_DEBOUNCE_MS = 500
 const MAX_LISTENER_RETRIES = 5
 
 let historyTimer: ReturnType<typeof setTimeout> | null = null
 let playbackTimer: ReturnType<typeof setTimeout> | null = null
 let preferencesTimer: ReturnType<typeof setTimeout> | null = null
+let watchedTimer: ReturnType<typeof setTimeout> | null = null
 let isSyncing = false
 let syncStatus: 'idle' | 'syncing' | 'synced' | 'offline' | 'unauthenticated' = 'idle'
 let realtimeUnsub: Unsubscribe | null = null
@@ -24,7 +27,7 @@ let initialSyncDone = false
 let listenerRetryCount = 0
 
 interface PendingWrite {
-  type: 'history' | 'playback' | 'preferences'
+  type: 'history' | 'playback' | 'preferences' | 'watched'
   data: unknown
   timestamp: number
 }
@@ -78,6 +81,7 @@ function startRealtimeListener(docRef: ReturnType<typeof doc>) {
       history?: HistoryEntry[]
       playback?: PositionsMap
       preferences?: UserPreferences
+      watched?: WatchedMap
       updatedAt?: number
     }
     const remoteUpdatedAt = data.updatedAt || 0
@@ -86,8 +90,9 @@ function startRealtimeListener(docRef: ReturnType<typeof doc>) {
     if (data.history) replaceHistoryEntries(data.history)
     if (data.playback) replaceAllPositions(data.playback)
     if (data.preferences) replacePreferences(data.preferences)
+    if (data.watched) replaceWatchedMap(data.watched)
     window.dispatchEvent(new Event('firestore-sync'))
-    syncLog('info', 'realtime: update from other device', `history=${data.history?.length ?? 0} playback=${Object.keys(data.playback || {}).length}`)
+    syncLog('info', 'realtime: update from other device', `history=${data.history?.length ?? 0} playback=${Object.keys(data.playback || {}).length} watched=${Object.keys(data.watched || {}).length}`)
   }, (err) => {
     syncLog('error', 'realtime: listener error', String(err))
     realtimeUnsub = null
@@ -146,6 +151,16 @@ function mergeHistoryForSync(
     .slice(0, MAX_ENTRIES)
 }
 
+function mergeWatched(local: WatchedMap, remote: WatchedMap): WatchedMap {
+  const merged: WatchedMap = { ...remote }
+  for (const [videoId, ts] of Object.entries(local)) {
+    if (!merged[videoId] || ts > merged[videoId]) {
+      merged[videoId] = ts
+    }
+  }
+  return merged
+}
+
 function mergePlayback(local: PositionsMap, remote: PositionsMap): PositionsMap {
   const merged: PositionsMap = { ...remote }
 
@@ -197,12 +212,14 @@ export async function initSync(): Promise<void> {
     const localHistory = getHistoryEntries()
     const localPlayback = getAllPositions()
     const localPreferences = getPreferences()
+    const localWatched = getWatchedMap()
 
     if (snapshot.exists()) {
       const remote = snapshot.data() as {
         history?: HistoryEntry[]
         playback?: PositionsMap
         preferences?: UserPreferences
+        watched?: WatchedMap
         updatedAt?: number
       }
 
@@ -210,27 +227,31 @@ export async function initSync(): Promise<void> {
       const mergedHistory = mergeHistoryForSync(localHistory, remote.history || [], remoteUpdatedAt)
       const mergedPlayback = mergePlayback(localPlayback, remote.playback || {})
       const mergedPreferences = remote.preferences || localPreferences
+      const mergedWatched = mergeWatched(localWatched, remote.watched || {})
 
       replaceHistoryEntries(mergedHistory)
       replaceAllPositions(mergedPlayback)
       replacePreferences(mergedPreferences)
+      replaceWatchedMap(mergedWatched)
 
       const now = Date.now()
       await setDoc(docRef, {
         history: mergedHistory,
         playback: mergedPlayback,
         preferences: mergedPreferences,
+        watched: mergedWatched,
         updatedAt: now,
       })
       lastWrittenAt = now
 
-      syncLog('info', 'initSync: merged', `local=${localHistory.length}/${Object.keys(localPlayback).length} remote=${(remote.history || []).length}/${Object.keys(remote.playback || {}).length} merged=${mergedHistory.length}/${Object.keys(mergedPlayback).length}`)
+      syncLog('info', 'initSync: merged', `local=${localHistory.length}/${Object.keys(localPlayback).length} remote=${(remote.history || []).length}/${Object.keys(remote.playback || {}).length} merged=${mergedHistory.length}/${Object.keys(mergedPlayback).length} watched=${Object.keys(mergedWatched).length}`)
     } else {
       const now = Date.now()
       await setDoc(docRef, {
         history: localHistory,
         playback: localPlayback,
         preferences: localPreferences,
+        watched: localWatched,
         updatedAt: now,
       })
       lastWrittenAt = now
@@ -300,6 +321,26 @@ export function syncPlayback(positions: PositionsMap): void {
       enqueue({ type: 'playback', data: positions, timestamp: Date.now() })
     }
   }, PLAYBACK_DEBOUNCE_MS)
+}
+
+export function syncWatched(watched: WatchedMap): void {
+  if (watchedTimer) clearTimeout(watchedTimer)
+  if (!isFirebaseReady()) {
+    enqueue({ type: 'watched', data: watched, timestamp: Date.now() })
+    return
+  }
+  watchedTimer = setTimeout(async () => {
+    const ref = getUserDocRef()
+    if (!ref) return
+    try {
+      const now = Date.now()
+      await setDoc(ref, { watched, updatedAt: now }, { merge: true })
+      lastWrittenAt = now
+    } catch (err) {
+      syncLog('error', 'syncWatched: failed', String(err))
+      enqueue({ type: 'watched', data: watched, timestamp: Date.now() })
+    }
+  }, WATCHED_DEBOUNCE_MS)
 }
 
 export function syncPreferences(preferences: UserPreferences): void {

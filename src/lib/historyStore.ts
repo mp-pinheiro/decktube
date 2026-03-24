@@ -1,5 +1,6 @@
 import type { YouTubeVideo } from './youtube'
 import { syncHistory } from './firestoreSync'
+import { markUnwatched } from './watchedStore'
 
 const STORAGE_KEY = 'yt_watch_history'
 const MAX_ENTRIES = 200
@@ -57,6 +58,7 @@ export function removeFromHistory(videoId: string): void {
   const entries = loadEntries().filter(e => e.video.videoId !== videoId)
   storeEntries(entries)
   syncHistory(entries)
+  markUnwatched(videoId)
 }
 
 export function clearHistory(): void {

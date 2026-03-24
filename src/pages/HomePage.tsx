@@ -1,9 +1,10 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getHomeFeed, getHomeFeedContinuation, getSubscriptionsFeed, getSubscriptionsFeedContinuation } from '../lib/youtube'
 import type { YouTubeVideo } from '../lib/youtube'
 import { isAuthenticated } from '../lib/oauth'
 import { getHistory, removeFromHistory, clearHistory } from '../lib/historyStore'
+import { getWatchedSet, markWatched, markUnwatched, isWatched } from '../lib/watchedStore'
 import { forceBootstrapNavFocus } from '../lib/focusManager'
 import { useInputContext } from '../contexts/InputProvider'
 import { saveHomeNavState, consumeHomeNavState } from '../lib/homeNavState'
@@ -52,6 +53,7 @@ export default function HomePage() {
 
   const [menuOpen, setMenuOpen] = useState(false)
   const [menuVideoId, setMenuVideoId] = useState<string | null>(null)
+  const [watchedIds, setWatchedIds] = useState(() => getWatchedSet())
 
   const activeTabRef = useRef(activeTab)
   activeTabRef.current = activeTab
@@ -124,7 +126,10 @@ export default function HomePage() {
   }, [activeTab, tabStates.recommended.fetched, fetchRecommended, tabStates.subscriptions.fetched, fetchSubscriptions, fetchHistory])
 
   useEffect(() => {
-    const onSync = () => fetchHistory()
+    const onSync = () => {
+      fetchHistory()
+      setWatchedIds(getWatchedSet())
+    }
     window.addEventListener('firestore-sync', onSync)
     return () => window.removeEventListener('firestore-sync', onSync)
   }, [fetchHistory])
@@ -215,13 +220,18 @@ export default function HomePage() {
   }, [])
 
   const handleMenuAction = useCallback((actionId: string) => {
-    if (actionId === 'remove' && menuVideoId) {
+    if (actionId === 'mark-watched' && menuVideoId) {
+      markWatched(menuVideoId)
+    } else if (actionId === 'mark-unwatched' && menuVideoId) {
+      markUnwatched(menuVideoId)
+    } else if (actionId === 'remove' && menuVideoId) {
       removeFromHistory(menuVideoId)
     } else if (actionId === 'clear') {
       clearHistory()
     }
     setMenuOpen(false)
     setMenuVideoId(null)
+    setWatchedIds(getWatchedSet())
     fetchHistory()
     requestAnimationFrame(() => forceBootstrapNavFocus())
   }, [menuVideoId, fetchHistory])
@@ -232,13 +242,27 @@ export default function HomePage() {
       channel: goToChannel,
       prevTab: () => cycleTab(-1),
       nextTab: () => cycleTab(1),
-    }
-    if (activeTab === 'history') {
-      actions.mode = openModeMenu
+      mode: openModeMenu,
     }
     registerActions(actions)
     return () => unregisterActions()
-  }, [registerActions, unregisterActions, goToVideo, goToChannel, cycleTab, activeTab, openModeMenu])
+  }, [registerActions, unregisterActions, goToVideo, goToChannel, cycleTab, openModeMenu])
+
+  const menuItems = useMemo(() => {
+    const videoWatched = menuVideoId ? isWatched(menuVideoId) : false
+    if (activeTab === 'history') {
+      return [
+        videoWatched
+          ? { id: 'mark-unwatched', label: 'Mark as unwatched' }
+          : { id: 'mark-watched', label: 'Mark as watched' },
+        { id: 'remove', label: 'Remove from history' },
+        { id: 'clear', label: 'Clear all history', danger: true },
+      ]
+    }
+    return [
+      { id: 'mark-watched', label: 'Mark as watched' },
+    ]
+  }, [activeTab, menuVideoId])
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -247,7 +271,7 @@ export default function HomePage() {
       {activeTab === 'recommended' && (
         <PagedVideoGrid
           key="recommended"
-          videos={state.videos}
+          videos={state.videos.filter(v => !watchedIds.has(v.videoId))}
           loading={state.loading}
           error={state.error}
           continuation={state.continuation}
@@ -261,7 +285,7 @@ export default function HomePage() {
       {activeTab === 'subscriptions' && (
         <PagedVideoGrid
           key="subscriptions"
-          videos={state.videos}
+          videos={state.videos.filter(v => !watchedIds.has(v.videoId))}
           loading={state.loading}
           error={state.error}
           continuation={state.continuation}
@@ -283,16 +307,14 @@ export default function HomePage() {
           initialPageIndex={restoredState?.activeTab === 'history' ? restoredState.pageIndex : undefined}
           initialFocusIndex={restoredState?.activeTab === 'history' ? restoredState.focusIndex : undefined}
           onPageChange={(idx) => { pageIndexRef.current['history'] = idx }}
+          showWatchedBadge
         />
       )}
 
       <ActionMenu
         open={menuOpen}
         onClose={() => { setMenuOpen(false); setMenuVideoId(null) }}
-        items={[
-          { id: 'remove', label: 'Remove from history' },
-          { id: 'clear', label: 'Clear all history', danger: true },
-        ]}
+        items={menuItems}
         onSelect={handleMenuAction}
       />
     </div>
