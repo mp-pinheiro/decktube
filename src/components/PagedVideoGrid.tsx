@@ -15,6 +15,9 @@ interface PagedVideoGridProps {
   onLoadMore?: () => void
   showChannel?: boolean
   emptyMessage?: string
+  initialPageIndex?: number
+  initialFocusIndex?: number
+  onPageChange?: (pageIndex: number) => void
 }
 
 export default function PagedVideoGrid({
@@ -25,8 +28,11 @@ export default function PagedVideoGrid({
   onLoadMore,
   showChannel = true,
   emptyMessage = 'No videos found',
+  initialPageIndex,
+  initialFocusIndex,
+  onPageChange,
 }: PagedVideoGridProps) {
-  const [pageIndex, setPageIndex] = useState(0)
+  const [pageIndex, setPageIndex] = useState(initialPageIndex ?? 0)
 
   const pageIndexRef = useRef(pageIndex)
   pageIndexRef.current = pageIndex
@@ -35,6 +41,7 @@ export default function PagedVideoGrid({
   const continuationRef = useRef(continuation)
   continuationRef.current = continuation
   const pendingFocusIndex = useRef<number | null>(null)
+  const initialFocusApplied = useRef(false)
   const gridRef = useRef<HTMLDivElement>(null)
 
   const pageVideos = videos.slice(pageIndex * PAGE_SIZE, (pageIndex + 1) * PAGE_SIZE)
@@ -87,6 +94,24 @@ export default function PagedVideoGrid({
       if (target) setNavFocus(target)
     })
   }, [pageIndex])
+
+  useEffect(() => {
+    if (onPageChange) onPageChange(pageIndex)
+  }, [pageIndex, onPageChange])
+
+  useEffect(() => {
+    if (initialFocusApplied.current || initialFocusIndex == null) return
+    requestAnimationFrame(() => {
+      const grid = gridRef.current
+      if (!grid) return
+      const cards = Array.from(grid.querySelectorAll<HTMLElement>('[data-video-id]'))
+      const target = cards[initialFocusIndex]
+      if (target) {
+        initialFocusApplied.current = true
+        setNavFocus(target)
+      }
+    })
+  }, [initialFocusIndex, videos.length])
 
   useEffect(() => {
     if (onLoadMore && (pageIndex + 1) * PAGE_SIZE >= videos.length && continuation) {

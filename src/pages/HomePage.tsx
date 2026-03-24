@@ -6,6 +6,7 @@ import { isAuthenticated } from '../lib/oauth'
 import { getHistory, removeFromHistory, clearHistory } from '../lib/historyStore'
 import { forceBootstrapNavFocus } from '../lib/focusManager'
 import { useInputContext } from '../contexts/InputProvider'
+import { saveHomeNavState, consumeHomeNavState } from '../lib/homeNavState'
 import PagedVideoGrid from '../components/PagedVideoGrid'
 import TabBar from '../components/TabBar'
 import ActionMenu from '../components/ActionMenu'
@@ -31,7 +32,11 @@ function emptyTabState(): TabState {
 export default function HomePage() {
   const navigate = useNavigate()
   const { registerActions, unregisterActions } = useInputContext()
-  const [activeTab, setActiveTab] = useState('recommended')
+  const [restoredState] = useState(() => consumeHomeNavState())
+  const [activeTab, setActiveTab] = useState(restoredState?.activeTab ?? 'recommended')
+  const pageIndexRef = useRef<Record<string, number>>(
+    restoredState ? { [restoredState.activeTab]: restoredState.pageIndex } : {}
+  )
   const [tabStates, setTabStates] = useState<Record<string, TabState>>({
     recommended: emptyTabState(),
     subscriptions: emptyTabState(),
@@ -152,22 +157,40 @@ export default function HomePage() {
     })
   }, [])
 
+  const saveNavState = useCallback(() => {
+    const activeEl = document.activeElement as HTMLElement | null
+    const card = activeEl?.closest('[data-video-id]') as HTMLElement | null
+    const grid = card?.closest('.grid')
+    let focusIndex = 0
+    if (grid && card) {
+      const cards = Array.from(grid.querySelectorAll<HTMLElement>('[data-video-id]'))
+      focusIndex = Math.max(0, cards.indexOf(card))
+    }
+    saveHomeNavState({
+      activeTab: activeTabRef.current,
+      pageIndex: pageIndexRef.current[activeTabRef.current] ?? 0,
+      focusIndex,
+    })
+  }, [])
+
   const goToVideo = useCallback(() => {
     const activeEl = document.activeElement
     const link = activeEl?.closest('a[data-video-id]') as HTMLElement | null
     if (link) {
+      saveNavState()
       link.click()
     }
-  }, [])
+  }, [saveNavState])
 
   const goToChannel = useCallback(() => {
     const activeEl = document.activeElement
     const videoCard = activeEl?.closest('[data-video-id]')
     const channelId = videoCard?.getAttribute('data-channel-id')
     if (channelId) {
+      saveNavState()
       navigate(`/channel/${channelId}`)
     }
-  }, [navigate])
+  }, [navigate, saveNavState])
 
   const openModeMenu = useCallback(() => {
     const videoId = (document.activeElement?.closest('[data-video-id]') as HTMLElement | null)
@@ -215,6 +238,9 @@ export default function HomePage() {
           error={state.error}
           continuation={state.continuation}
           onLoadMore={loadMore}
+          initialPageIndex={restoredState?.activeTab === 'recommended' ? restoredState.pageIndex : undefined}
+          initialFocusIndex={restoredState?.activeTab === 'recommended' ? restoredState.focusIndex : undefined}
+          onPageChange={(idx) => { pageIndexRef.current['recommended'] = idx }}
         />
       )}
 
@@ -226,6 +252,9 @@ export default function HomePage() {
           error={state.error}
           continuation={state.continuation}
           onLoadMore={loadMore}
+          initialPageIndex={restoredState?.activeTab === 'subscriptions' ? restoredState.pageIndex : undefined}
+          initialFocusIndex={restoredState?.activeTab === 'subscriptions' ? restoredState.focusIndex : undefined}
+          onPageChange={(idx) => { pageIndexRef.current['subscriptions'] = idx }}
         />
       )}
 
@@ -237,6 +266,9 @@ export default function HomePage() {
           error={state.error}
           continuation={null}
           onLoadMore={loadMore}
+          initialPageIndex={restoredState?.activeTab === 'history' ? restoredState.pageIndex : undefined}
+          initialFocusIndex={restoredState?.activeTab === 'history' ? restoredState.focusIndex : undefined}
+          onPageChange={(idx) => { pageIndexRef.current['history'] = idx }}
         />
       )}
 
