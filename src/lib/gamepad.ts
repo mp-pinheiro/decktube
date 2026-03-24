@@ -38,9 +38,26 @@ let buttonHandlers: GamepadButtonHandler[] = []
 const previousButtonStates = new Map<number, boolean[]>()
 
 let wasFocused = true
+let windowFocused = true
+let windowFocusInitialised = false
+
+function initWindowFocusTracking() {
+  if (windowFocusInitialised) return
+  windowFocusInitialised = true
+  const api = (window as any).electronAPI
+  if (api?.onWindowFocus) {
+    api.onWindowFocus((focused: boolean) => {
+      windowFocused = focused
+      if (!focused) {
+        previousButtonStates.clear()
+        console.log('[Gamepad] Window blurred – suppressing input')
+      }
+    })
+  }
+}
 
 function pollGamepads() {
-  const isFocused = !document.hidden && document.hasFocus()
+  const isFocused = !document.hidden && document.hasFocus() && windowFocused
 
   if (!isFocused) {
     if (wasFocused) {
@@ -83,6 +100,7 @@ function pollGamepads() {
 
 export function initGamepad(handler: GamepadButtonHandler) {
   buttonHandlers.push(handler)
+  initWindowFocusTracking()
 
   if (!animationFrameId) {
     animationFrameId = requestAnimationFrame(pollGamepads)

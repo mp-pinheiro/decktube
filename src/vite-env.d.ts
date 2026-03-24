@@ -13,6 +13,7 @@ interface ElectronAPI {
   downloadUpdate: () => Promise<void>
   installUpdate: () => Promise<void>
   openReleasesPage: () => Promise<void>
+  onWindowFocus: (callback: (focused: boolean) => void) => () => void
 }
 
 declare global {
