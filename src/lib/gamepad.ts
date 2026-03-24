@@ -35,17 +35,28 @@ function filterGamepads(raw: (Gamepad | null)[]): Gamepad[] {
     all.push(gp)
     if (isSteamController(gp)) steam.push(gp)
   }
-  return steam.length > 0 ? steam : all
+  return steam.length > 0 && preferSteam ? steam : all
 }
 
 let animationFrameId: number | null = null
 let buttonHandlers: GamepadButtonHandler[] = []
 const previousButtonStates = new Map<number, boolean[]>()
 
+const DPAD_BUTTONS: Set<number> = new Set([
+  GAMEPAD_BUTTONS.DPAD_UP, GAMEPAD_BUTTONS.DPAD_DOWN,
+  GAMEPAD_BUTTONS.DPAD_LEFT, GAMEPAD_BUTTONS.DPAD_RIGHT,
+])
+const REPEAT_INITIAL_DELAY = 400
+const REPEAT_INTERVAL = 150
+
+interface HoldState { lastEmit: number; repeating: boolean }
+const buttonHoldState = new Map<string, HoldState>()
+
 let wasFocused = true
 let windowFocused = true
 let windowFocusInitialised = false
 let hadGamepads = false
+let preferSteam = false
 let restartAttempted = false
 let gamepadLossTimer: ReturnType<typeof setTimeout> | null = null
 let initialSetupDone = false
@@ -60,6 +71,7 @@ function initWindowFocusTracking() {
       windowFocused = focused
       if (!focused) {
         previousButtonStates.clear()
+        buttonHoldState.clear()
         console.log('[Gamepad] Window blurred – suppressing input')
       }
     })
@@ -72,6 +84,7 @@ function pollGamepads() {
   if (!isFocused) {
     if (wasFocused) {
       previousButtonStates.clear()
+      buttonHoldState.clear()
       wasFocused = false
     }
     animationFrameId = requestAnimationFrame(pollGamepads)
@@ -80,6 +93,7 @@ function pollGamepads() {
 
   if (!wasFocused) {
     previousButtonStates.clear()
+    buttonHoldState.clear()
     wasFocused = true
   }
 
@@ -91,12 +105,37 @@ function pollGamepads() {
     gamepad.buttons.forEach((button, index) => {
       const isPressed = button.pressed
       const wasPressed = prevStates[index] || false
+      const holdKey = `${gamepad.index}-${index}`
 
       if (isPressed && !wasPressed) {
+        if (!preferSteam && isSteamController(gamepad)) {
+          preferSteam = true
+          console.log('[Gamepad] Steam input confirmed, preferring Steam controllers')
+        }
         const buttonName = Object.entries(GAMEPAD_BUTTONS).find(([_, bi]) => bi === index)?.[0]
         if (buttonName) {
           buttonHandlers.forEach(handler => handler(buttonName, true))
         }
+        if (DPAD_BUTTONS.has(index)) {
+          buttonHoldState.set(holdKey, { lastEmit: Date.now(), repeating: false })
+        }
+      } else if (isPressed && wasPressed && DPAD_BUTTONS.has(index)) {
+        const hold = buttonHoldState.get(holdKey)
+        if (hold) {
+          const now = Date.now()
+          const elapsed = now - hold.lastEmit
+          const threshold = hold.repeating ? REPEAT_INTERVAL : REPEAT_INITIAL_DELAY
+          if (elapsed >= threshold) {
+            const buttonName = Object.entries(GAMEPAD_BUTTONS).find(([_, bi]) => bi === index)?.[0]
+            if (buttonName) {
+              buttonHandlers.forEach(handler => handler(buttonName, true))
+            }
+            hold.lastEmit = now
+            hold.repeating = true
+          }
+        }
+      } else if (!isPressed) {
+        buttonHoldState.delete(holdKey)
       }
 
       prevStates[index] = isPressed
@@ -137,6 +176,12 @@ export function initGamepad(handler: GamepadButtonHandler) {
     const isSteam = isSteamController(e.gamepad)
     console.log('[Gamepad] Disconnected:', e.gamepad.id, 'at index', e.gamepad.index)
     previousButtonStates.delete(e.gamepad.index)
+    for (const key of buttonHoldState.keys()) {
+      if (key.startsWith(`${e.gamepad.index}-`)) buttonHoldState.delete(key)
+    }
+    if (isSteam) {
+      preferSteam = false
+    }
 
     if (initialSetupDone && !isSteam) {
       emitToast('Controller disconnected')
@@ -165,6 +210,7 @@ export function initGamepad(handler: GamepadButtonHandler) {
       cancelAnimationFrame(animationFrameId)
       animationFrameId = null
       previousButtonStates.clear()
+      buttonHoldState.clear()
     }
     window.removeEventListener('gamepadconnected', handleConnect)
     window.removeEventListener('gamepaddisconnected', handleDisconnect)

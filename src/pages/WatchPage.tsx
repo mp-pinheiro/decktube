@@ -356,8 +356,8 @@ export default function WatchPage() {
 
     const held = now - seekHoldStartRef.current
     const SEEK_TIERS = [
-      { after: 3000, seek: 60 },
-      { after: 1000, seek: 30 },
+      { after: 3000, seek: 360 },
+      { after: 1000, seek: 120 },
       { after: 0, seek: 10 },
     ]
     const amount = SEEK_TIERS.find(t => held >= t.after)!.seek
