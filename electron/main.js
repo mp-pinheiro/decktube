@@ -7,9 +7,16 @@ import { createProxyMiddleware } from 'http-proxy-middleware'
 import express from 'express'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
+import { appendFileSync, writeFileSync } from 'fs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const isDev = !!process.env.VITE_DEV_SERVER_URL
+
+const logPath = join(app.getPath('userData'), 'decktube.log')
+try { writeFileSync(logPath, `[${new Date().toISOString()}] DeckTube started\n`) } catch {}
+function logToFile(msg) {
+  try { appendFileSync(logPath, `[${new Date().toISOString()}] ${msg}\n`) } catch {}
+}
 
 let mainWindow
 let proxyServer = null
@@ -193,6 +200,7 @@ async function createWindow() {
     console.error(`[Window] Renderer crashed: ${details.reason}`)
   })
   mainWindow.webContents.on('console-message', (_event, level, message) => {
+    logToFile(`[Renderer:${level}] ${message}`)
     if (level >= 2) console.error(`[Renderer] ${message}`)
   })
 
@@ -205,6 +213,19 @@ async function createWindow() {
   })
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+
+  mainWindow.on('blur', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      logToFile('Window blurred')
+      mainWindow.webContents.send('window-focus', false)
+    }
+  })
+  mainWindow.on('focus', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      logToFile('Window focused')
+      mainWindow.webContents.send('window-focus', true)
+    }
+  })
 }
 
 function sendUpdateStatus(payload) {
@@ -293,6 +314,8 @@ async function initAutoUpdater() {
 }
 
 app.whenReady().then(async () => {
+  console.log(`[Log] Writing to ${logPath}`)
+  logToFile('App ready')
   await createWindow()
   initAutoUpdater()
 })

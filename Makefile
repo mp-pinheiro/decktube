@@ -6,7 +6,7 @@ STEAM_GAME_ID ?=
 
 GRID_DIR = /home/deck/.local/share/Steam/userdata/$(STEAM_USER_ID)/config/grid
 
-.PHONY: assets build bump release deploy deploy-art
+.PHONY: assets build bump release deploy deploy-art logs
 
 assets:
 	rm -f steam-assets/*.png steam-assets/*.jpg
@@ -83,3 +83,6 @@ deploy-art:
 	scp steam-assets/background.png $(DECK_HOST):$(GRID_DIR)/$(STEAM_GAME_ID)_hero.png
 	scp steam-assets/background.jpg $(DECK_HOST):$(GRID_DIR)/$(STEAM_GAME_ID)_hero.jpg
 	@echo "Art deployed. Restart Steam on the Deck for changes to take effect."
+
+logs:
+	ssh $(DECK_HOST) 'cat ~/.config/decktube/decktube.log'
