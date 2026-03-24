@@ -37,10 +37,17 @@ export default function HomePage() {
   const pageIndexRef = useRef<Record<string, number>>(
     restoredState ? { [restoredState.activeTab]: restoredState.pageIndex } : {}
   )
-  const [tabStates, setTabStates] = useState<Record<string, TabState>>({
-    recommended: emptyTabState(),
-    subscriptions: emptyTabState(),
-    history: emptyTabState(),
+  const [tabStates, setTabStates] = useState<Record<string, TabState>>(() => {
+    const tabs = restoredState?.tabs
+    return {
+      recommended: tabs?.recommended
+        ? { videos: tabs.recommended.videos, continuation: tabs.recommended.continuation, loading: false, error: null, fetched: true }
+        : emptyTabState(),
+      subscriptions: tabs?.subscriptions
+        ? { videos: tabs.subscriptions.videos, continuation: tabs.subscriptions.continuation, loading: false, error: null, fetched: true }
+        : emptyTabState(),
+      history: emptyTabState(),
+    }
   })
 
   const [menuOpen, setMenuOpen] = useState(false)
@@ -48,6 +55,8 @@ export default function HomePage() {
 
   const activeTabRef = useRef(activeTab)
   activeTabRef.current = activeTab
+  const tabStatesRef = useRef(tabStates)
+  tabStatesRef.current = tabStates
 
   const state = tabStates[activeTab]
 
@@ -166,10 +175,15 @@ export default function HomePage() {
       const cards = Array.from(grid.querySelectorAll<HTMLElement>('[data-video-id]'))
       focusIndex = Math.max(0, cards.indexOf(card))
     }
+    const ts = tabStatesRef.current
+    const tabs: Record<string, { videos: YouTubeVideo[], continuation: string | null }> = {}
+    if (ts.recommended.fetched) tabs.recommended = { videos: ts.recommended.videos, continuation: ts.recommended.continuation }
+    if (ts.subscriptions.fetched) tabs.subscriptions = { videos: ts.subscriptions.videos, continuation: ts.subscriptions.continuation }
     saveHomeNavState({
       activeTab: activeTabRef.current,
       pageIndex: pageIndexRef.current[activeTabRef.current] ?? 0,
       focusIndex,
+      tabs,
     })
   }, [])
 

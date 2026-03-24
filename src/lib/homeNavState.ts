@@ -1,7 +1,15 @@
+import type { YouTubeVideo } from './youtube'
+
+export interface CachedTabData {
+  videos: YouTubeVideo[]
+  continuation: string | null
+}
+
 export interface HomeNavState {
   activeTab: string
   pageIndex: number
   focusIndex: number
+  tabs: Record<string, CachedTabData>
 }
 
 let cached: HomeNavState | null = null
