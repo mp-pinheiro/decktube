@@ -17,6 +17,24 @@ const GAMEPAD_BUTTONS = {
 
 type GamepadButtonHandler = (button: string, pressed: boolean) => void
 
+const STEAM_VENDOR_ID = '28de'
+
+function getVendorId(gamepad: Gamepad): string | null {
+  const match = gamepad.id.match(/Vendor:\s*([0-9a-fA-F]{4})/)
+  return match ? match[1].toLowerCase() : null
+}
+
+function filterGamepads(raw: (Gamepad | null)[]): Gamepad[] {
+  const all: Gamepad[] = []
+  const steam: Gamepad[] = []
+  for (const gp of raw) {
+    if (!gp) continue
+    all.push(gp)
+    if (getVendorId(gp) === STEAM_VENDOR_ID) steam.push(gp)
+  }
+  return steam.length > 0 ? steam : all
+}
+
 let animationFrameId: number | null = null
 let buttonHandlers: GamepadButtonHandler[] = []
 const previousButtonStates = new Map<number, boolean[]>()
@@ -40,13 +58,10 @@ function pollGamepads() {
     wasFocused = true
   }
 
-  const gamepads = navigator.getGamepads()
+  const gamepads = filterGamepads([...navigator.getGamepads()])
 
-  for (let i = 0; i < gamepads.length; i++) {
-    const gamepad = gamepads[i]
-    if (!gamepad) continue
-
-    const prevStates = previousButtonStates.get(i) ?? []
+  for (const gamepad of gamepads) {
+    const prevStates = previousButtonStates.get(gamepad.index) ?? []
 
     gamepad.buttons.forEach((button, index) => {
       const isPressed = button.pressed
@@ -62,7 +77,7 @@ function pollGamepads() {
       prevStates[index] = isPressed
     })
 
-    previousButtonStates.set(i, prevStates)
+    previousButtonStates.set(gamepad.index, prevStates)
   }
 
   animationFrameId = requestAnimationFrame(pollGamepads)
@@ -76,7 +91,11 @@ export function initGamepad(handler: GamepadButtonHandler) {
   }
 
   const handleConnect = (e: GamepadEvent) => {
-    console.log('[Gamepad] Connected:', e.gamepad.id, 'at index', e.gamepad.index)
+    const vid = getVendorId(e.gamepad)
+    console.log('[Gamepad] Connected:', e.gamepad.id, 'at index', e.gamepad.index, 'vendor:', vid ?? 'unknown')
+    if (vid && vid !== STEAM_VENDOR_ID) {
+      console.log('[Gamepad] Non-Steam controller detected; will prefer Steam virtual gamepad if available')
+    }
   }
 
   const handleDisconnect = (e: GamepadEvent) => {
@@ -100,5 +119,5 @@ export function initGamepad(handler: GamepadButtonHandler) {
 }
 
 export function isGamepadConnected(): boolean {
-  return navigator.getGamepads().some(gp => gp !== null)
+  return filterGamepads([...navigator.getGamepads()]).length > 0
 }
