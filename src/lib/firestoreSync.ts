@@ -1,28 +1,83 @@
-import { doc, getDoc, setDoc, onSnapshot, type Unsubscribe } from 'firebase/firestore'
+import { doc, getDoc, setDoc, deleteDoc, onSnapshot, type Unsubscribe } from 'firebase/firestore'
 import { initFirebaseAuth, getFirebaseDb, isFirebaseReady, getFirebaseUser } from './firebase'
 import { getIdToken } from './oauth'
 import { getHistoryEntries, replaceHistoryEntries, type HistoryEntry } from './historyStore'
 import { getAllPositions, replaceAllPositions, type PositionsMap } from './playbackStore'
+import { getPreferences, replacePreferences, type UserPreferences } from './preferencesStore'
 import { syncLog } from './syncLog'
 
 const MAX_ENTRIES = 200
 const HISTORY_DEBOUNCE_MS = 500
 const PLAYBACK_DEBOUNCE_MS = 30_000
+const PREFERENCES_DEBOUNCE_MS = 500
+const MAX_LISTENER_RETRIES = 5
 
 let historyTimer: ReturnType<typeof setTimeout> | null = null
 let playbackTimer: ReturnType<typeof setTimeout> | null = null
+let preferencesTimer: ReturnType<typeof setTimeout> | null = null
 let isSyncing = false
 let syncStatus: 'idle' | 'syncing' | 'synced' | 'offline' | 'unauthenticated' = 'idle'
 let realtimeUnsub: Unsubscribe | null = null
 let lastWrittenAt = 0
+let hashedUid: string | null = null
+let initialSyncDone = false
+let listenerRetryCount = 0
+
+interface PendingWrite {
+  type: 'history' | 'playback' | 'preferences'
+  data: unknown
+  timestamp: number
+}
+let offlineQueue: PendingWrite[] = []
+let onlineListenerAttached = false
+
+async function hashUid(uid: string): Promise<string> {
+  const data = new TextEncoder().encode(uid)
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+function enqueue(write: PendingWrite) {
+  const idx = offlineQueue.findIndex(w => w.type === write.type)
+  if (idx >= 0) {
+    offlineQueue[idx] = write
+  } else {
+    offlineQueue.push(write)
+  }
+}
+
+async function flushOfflineQueue(): Promise<void> {
+  if (offlineQueue.length === 0) return
+  const ref = getUserDocRef()
+  if (!ref) return
+
+  const pending = [...offlineQueue]
+  offlineQueue = []
+
+  try {
+    const now = Date.now()
+    const payload: Record<string, unknown> = { updatedAt: now }
+    for (const write of pending) {
+      payload[write.type] = write.data
+    }
+    await setDoc(ref, payload, { merge: true })
+    lastWrittenAt = now
+    syncLog('info', 'flushOfflineQueue: flushed', `types=${pending.map(w => w.type).join(',')}`)
+  } catch (err) {
+    for (const write of pending) enqueue(write)
+    syncLog('error', 'flushOfflineQueue: failed, re-enqueued', String(err))
+  }
+}
 
 function startRealtimeListener(docRef: ReturnType<typeof doc>) {
   if (realtimeUnsub) return
   realtimeUnsub = onSnapshot(docRef, (snapshot) => {
+    listenerRetryCount = 0
     if (!snapshot.exists()) return
     const data = snapshot.data() as {
       history?: HistoryEntry[]
       playback?: PositionsMap
+      preferences?: UserPreferences
       updatedAt?: number
     }
     const remoteUpdatedAt = data.updatedAt || 0
@@ -30,24 +85,36 @@ function startRealtimeListener(docRef: ReturnType<typeof doc>) {
     lastWrittenAt = remoteUpdatedAt
     if (data.history) replaceHistoryEntries(data.history)
     if (data.playback) replaceAllPositions(data.playback)
+    if (data.preferences) replacePreferences(data.preferences)
     window.dispatchEvent(new Event('firestore-sync'))
     syncLog('info', 'realtime: update from other device', `history=${data.history?.length ?? 0} playback=${Object.keys(data.playback || {}).length}`)
   }, (err) => {
     syncLog('error', 'realtime: listener error', String(err))
     realtimeUnsub = null
+    listenerRetryCount++
+    if (listenerRetryCount <= MAX_LISTENER_RETRIES) {
+      const delay = Math.min(1000 * Math.pow(2, listenerRetryCount), 30000)
+      syncLog('info', 'realtime: scheduling retry', `attempt=${listenerRetryCount} delay=${delay}ms`)
+      setTimeout(() => startRealtimeListener(docRef), delay)
+    } else {
+      syncLog('error', 'realtime: max retries reached, giving up')
+    }
   })
 }
 
 export function stopRealtimeListener() {
   realtimeUnsub?.()
   realtimeUnsub = null
+  initialSyncDone = false
+  hashedUid = null
+  listenerRetryCount = 0
 }
 
 function getUserDocRef() {
   const db = getFirebaseDb()
   const user = getFirebaseUser()
-  if (!db || !user) return null
-  return doc(db, 'users', user.uid)
+  if (!db || !user || !hashedUid) return null
+  return doc(db, 'users', hashedUid)
 }
 
 function mergeHistoryForSync(
@@ -98,6 +165,7 @@ function mergePlayback(local: PositionsMap, remote: PositionsMap): PositionsMap 
 
 export async function initSync(): Promise<void> {
   if (isSyncing) return
+  if (initialSyncDone && realtimeUnsub) return
   isSyncing = true
 
   try {
@@ -109,30 +177,49 @@ export async function initSync(): Promise<void> {
     const db = getFirebaseDb()
     if (!db) throw new Error('Firestore not initialized')
 
-    const docRef = doc(db, 'users', user.uid)
-    const snapshot = await getDoc(docRef)
+    hashedUid = await hashUid(user.uid)
+
+    // Migration: move plaintext UID doc to hashed doc
+    const oldDocRef = doc(db, 'users', user.uid)
+    const docRef = doc(db, 'users', hashedUid)
+    const [oldSnapshot, newSnapshot] = await Promise.all([getDoc(oldDocRef), getDoc(docRef)])
+
+    let snapshot = newSnapshot
+    if (oldSnapshot.exists() && !newSnapshot.exists()) {
+      syncLog('info', 'initSync: migrating plaintext UID doc to hashed doc')
+      await setDoc(docRef, oldSnapshot.data())
+      await deleteDoc(oldDocRef)
+      snapshot = oldSnapshot
+    } else if (oldSnapshot.exists()) {
+      await deleteDoc(oldDocRef)
+    }
 
     const localHistory = getHistoryEntries()
     const localPlayback = getAllPositions()
+    const localPreferences = getPreferences()
 
     if (snapshot.exists()) {
       const remote = snapshot.data() as {
         history?: HistoryEntry[]
         playback?: PositionsMap
+        preferences?: UserPreferences
         updatedAt?: number
       }
 
       const remoteUpdatedAt = remote.updatedAt || 0
       const mergedHistory = mergeHistoryForSync(localHistory, remote.history || [], remoteUpdatedAt)
       const mergedPlayback = mergePlayback(localPlayback, remote.playback || {})
+      const mergedPreferences = remote.preferences || localPreferences
 
       replaceHistoryEntries(mergedHistory)
       replaceAllPositions(mergedPlayback)
+      replacePreferences(mergedPreferences)
 
       const now = Date.now()
       await setDoc(docRef, {
         history: mergedHistory,
         playback: mergedPlayback,
+        preferences: mergedPreferences,
         updatedAt: now,
       })
       lastWrittenAt = now
@@ -143,6 +230,7 @@ export async function initSync(): Promise<void> {
       await setDoc(docRef, {
         history: localHistory,
         playback: localPlayback,
+        preferences: localPreferences,
         updatedAt: now,
       })
       lastWrittenAt = now
@@ -150,7 +238,15 @@ export async function initSync(): Promise<void> {
     }
 
     syncStatus = 'synced'
+    initialSyncDone = true
     startRealtimeListener(docRef)
+    await flushOfflineQueue()
+
+    if (!onlineListenerAttached) {
+      window.addEventListener('online', () => { flushOfflineQueue() })
+      onlineListenerAttached = true
+    }
+
     window.dispatchEvent(new Event('firestore-sync'))
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -167,8 +263,11 @@ export async function initSync(): Promise<void> {
 }
 
 export function syncHistory(entries: HistoryEntry[]): void {
-  if (!isFirebaseReady()) return
   if (historyTimer) clearTimeout(historyTimer)
+  if (!isFirebaseReady()) {
+    enqueue({ type: 'history', data: entries, timestamp: Date.now() })
+    return
+  }
   historyTimer = setTimeout(async () => {
     const ref = getUserDocRef()
     if (!ref) return
@@ -178,13 +277,17 @@ export function syncHistory(entries: HistoryEntry[]): void {
       lastWrittenAt = now
     } catch (err) {
       syncLog('error', 'syncHistory: failed', String(err))
+      enqueue({ type: 'history', data: entries, timestamp: Date.now() })
     }
   }, HISTORY_DEBOUNCE_MS)
 }
 
 export function syncPlayback(positions: PositionsMap): void {
-  if (!isFirebaseReady()) return
   if (playbackTimer) clearTimeout(playbackTimer)
+  if (!isFirebaseReady()) {
+    enqueue({ type: 'playback', data: positions, timestamp: Date.now() })
+    return
+  }
   playbackTimer = setTimeout(async () => {
     const ref = getUserDocRef()
     if (!ref) return
@@ -194,8 +297,29 @@ export function syncPlayback(positions: PositionsMap): void {
       lastWrittenAt = now
     } catch (err) {
       syncLog('error', 'syncPlayback: failed', String(err))
+      enqueue({ type: 'playback', data: positions, timestamp: Date.now() })
     }
   }, PLAYBACK_DEBOUNCE_MS)
+}
+
+export function syncPreferences(preferences: UserPreferences): void {
+  if (preferencesTimer) clearTimeout(preferencesTimer)
+  if (!isFirebaseReady()) {
+    enqueue({ type: 'preferences', data: preferences, timestamp: Date.now() })
+    return
+  }
+  preferencesTimer = setTimeout(async () => {
+    const ref = getUserDocRef()
+    if (!ref) return
+    try {
+      const now = Date.now()
+      await setDoc(ref, { preferences, updatedAt: now }, { merge: true })
+      lastWrittenAt = now
+    } catch (err) {
+      syncLog('error', 'syncPreferences: failed', String(err))
+      enqueue({ type: 'preferences', data: preferences, timestamp: Date.now() })
+    }
+  }, PREFERENCES_DEBOUNCE_MS)
 }
 
 export function getSyncStatus() {
