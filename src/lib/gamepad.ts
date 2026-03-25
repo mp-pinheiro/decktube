@@ -35,7 +35,7 @@ function filterGamepads(raw: (Gamepad | null)[]): Gamepad[] {
     all.push(gp)
     if (isSteamController(gp)) steam.push(gp)
   }
-  return steam.length > 0 && preferSteam ? steam : all
+  return steam.length > 0 ? steam : all
 }
 
 let animationFrameId: number | null = null
@@ -56,7 +56,6 @@ let wasFocused = true
 let windowFocused = true
 let windowFocusInitialised = false
 let hadGamepads = false
-let preferSteam = false
 let restartAttempted = false
 let gamepadLossTimer: ReturnType<typeof setTimeout> | null = null
 let initialSetupDone = false
@@ -108,10 +107,6 @@ function pollGamepads() {
       const holdKey = `${gamepad.index}-${index}`
 
       if (isPressed && !wasPressed) {
-        if (!preferSteam && isSteamController(gamepad)) {
-          preferSteam = true
-          console.log('[Gamepad] Steam input confirmed, preferring Steam controllers')
-        }
         const buttonName = Object.entries(GAMEPAD_BUTTONS).find(([_, bi]) => bi === index)?.[0]
         if (buttonName) {
           buttonHandlers.forEach(handler => handler(buttonName, true))
@@ -173,17 +168,13 @@ export function initGamepad(handler: GamepadButtonHandler) {
   }
 
   const handleDisconnect = (e: GamepadEvent) => {
-    const isSteam = isSteamController(e.gamepad)
     console.log('[Gamepad] Disconnected:', e.gamepad.id, 'at index', e.gamepad.index)
     previousButtonStates.delete(e.gamepad.index)
     for (const key of buttonHoldState.keys()) {
       if (key.startsWith(`${e.gamepad.index}-`)) buttonHoldState.delete(key)
     }
-    if (isSteam) {
-      preferSteam = false
-    }
 
-    if (initialSetupDone && !isSteam) {
+    if (initialSetupDone && !isSteamController(e.gamepad)) {
       emitToast('Controller disconnected')
     }
 
