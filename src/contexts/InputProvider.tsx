@@ -14,7 +14,7 @@ interface InputProviderProps {
 export function InputProvider({ children }: InputProviderProps) {
   const navigate = useNavigate()
   const location = useLocation()
-  const actionsRef = useRef<Partial<Record<ButtonAction, () => void>>>({})
+  const actionsRef = useRef<Partial<Record<ButtonAction, (isRepeat?: boolean) => void>>>({})
   const locationKeyRef = useRef(location.key)
   const lastGamepadActionRef = useRef(0)
 
@@ -56,7 +56,7 @@ export function InputProvider({ children }: InputProviderProps) {
     }
   }, [navigate, closeVirtualKeyboard])
 
-  const registerActions = useCallback((actions: Partial<Record<ButtonAction, () => void>>) => {
+  const registerActions = useCallback((actions: Partial<Record<ButtonAction, (isRepeat?: boolean) => void>>) => {
     actionsRef.current = actions
   }, [])
 
