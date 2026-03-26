@@ -388,36 +388,39 @@ export default function WatchPage() {
     }
   }, [])
 
-  const seekHoldStartRef = useRef<number>(0)
-  const seekHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const seekHoldStartRef = useRef(0)
 
-  const seek = useCallback((direction: number) => {
+  const seek = useCallback((direction: number, isRepeat = false) => {
     const video = videoElRef.current
     if (!video) return
 
-    const now = Date.now()
-    if (seekHoldTimerRef.current) clearTimeout(seekHoldTimerRef.current)
-
-    if (!seekHoldStartRef.current) {
-      seekHoldStartRef.current = now
+    let amount = 10
+    if (isRepeat) {
+      if (!seekHoldStartRef.current) seekHoldStartRef.current = Date.now()
+      const held = Date.now() - seekHoldStartRef.current
+      if (held >= 3000) amount = 360
+      else if (held >= 1500) amount = 120
+    } else {
+      seekHoldStartRef.current = 0
     }
 
-    const held = now - seekHoldStartRef.current
-    const SEEK_TIERS = [
-      { after: 3000, seek: 360 },
-      { after: 1000, seek: 120 },
-      { after: 0, seek: 10 },
-    ]
-    const amount = SEEK_TIERS.find(t => held >= t.after)!.seek
-
     const delta = direction * amount
-    video.currentTime = Math.max(0, video.currentTime + delta)
+    let newTime = Math.max(0, video.currentTime + delta)
+
+    if (sponsorBlockEnabledRef.current) {
+      for (const seg of sbSegmentsRef.current) {
+        if (seg.actionType !== 'skip') continue
+        const [start, end] = seg.segment
+        if (newTime >= start && newTime < end) {
+          newTime = direction > 0 ? end : Math.max(0, start - 0.1)
+          break
+        }
+      }
+    }
+
+    video.currentTime = newTime
     setSeekDelta(delta)
     setSeekAction(c => c + 1)
-
-    seekHoldTimerRef.current = setTimeout(() => {
-      seekHoldStartRef.current = 0
-    }, 400)
   }, [])
 
   const setVolume = useCallback((newVolume: number) => {
@@ -518,8 +521,8 @@ export default function WatchPage() {
       mode: openMenu,
       nav_up: () => setVolume(Math.min(100, volume + 10)),
       nav_down: () => setVolume(Math.max(0, volume - 10)),
-      nav_left: () => seek(-1),
-      nav_right: () => seek(1),
+      nav_left: (isRepeat) => seek(-1, isRepeat),
+      nav_right: (isRepeat) => seek(1, isRepeat),
     })
     return () => unregisterActions()
   }, [registerActions, unregisterActions, togglePlay, goToChannel, toggleFullscreen, toggleQuality, handleAutoPlay, openMenu, seek, setVolume, volume])

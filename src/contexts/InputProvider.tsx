@@ -65,7 +65,7 @@ export function InputProvider({ children }: InputProviderProps) {
   }, [])
 
   useEffect(() => {
-    const handleIntent = (intent: InputIntent, source: 'keyboard' | 'gamepad', event?: KeyboardEvent): boolean => {
+    const handleIntent = (intent: InputIntent, source: 'keyboard' | 'gamepad', event?: KeyboardEvent, isRepeat?: boolean): boolean => {
       if (dispatchThroughLayers(intent, event)) return true
 
       const activeEl = document.activeElement as HTMLElement | null
@@ -168,7 +168,7 @@ export function InputProvider({ children }: InputProviderProps) {
         case 'nav_right':
           if (actions[intent]) {
             event?.preventDefault()
-            actions[intent]!()
+            actions[intent]!(isRepeat || event?.repeat || false)
             return true
           }
           handleSpatialNav(intent, event)
@@ -182,7 +182,7 @@ export function InputProvider({ children }: InputProviderProps) {
       const intent = keyToIntent(e.key)
       if (!intent) return
 
-      handleIntent(intent, 'keyboard', e)
+      handleIntent(intent, 'keyboard', e, e.repeat)
     }
 
     window.addEventListener('keydown', handleKeydown)
@@ -192,7 +192,7 @@ export function InputProvider({ children }: InputProviderProps) {
 
     const cleanupNavFocus = initNavFocusCleanup()
 
-    const cleanupGamepad = initGamepad((button, pressed) => {
+    const cleanupGamepad = initGamepad((button, pressed, isRepeat) => {
       if (!pressed) return
 
       if (virtualKeyboardOpenRef.current) {
@@ -238,7 +238,7 @@ export function InputProvider({ children }: InputProviderProps) {
       }
 
       const intent = gamepadToIntent(button)
-      if (intent) handleIntent(intent, 'gamepad')
+      if (intent) handleIntent(intent, 'gamepad', undefined, isRepeat)
     })
 
     return () => {

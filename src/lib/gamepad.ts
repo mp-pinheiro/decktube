@@ -15,7 +15,7 @@ const GAMEPAD_BUTTONS = {
   DPAD_RIGHT: 15,
 } as const
 
-type GamepadButtonHandler = (button: string, pressed: boolean) => void
+type GamepadButtonHandler = (button: string, pressed: boolean, isRepeat?: boolean) => void
 
 function emitToast(message: string, type: 'info' | 'warning' = 'info') {
   console.log('[Gamepad] Toast:', message)
@@ -109,7 +109,7 @@ function pollGamepads() {
       if (isPressed && !wasPressed) {
         const buttonName = Object.entries(GAMEPAD_BUTTONS).find(([_, bi]) => bi === index)?.[0]
         if (buttonName) {
-          buttonHandlers.forEach(handler => handler(buttonName, true))
+          buttonHandlers.forEach(handler => handler(buttonName, true, false))
         }
         if (DPAD_BUTTONS.has(index)) {
           buttonHoldState.set(holdKey, { lastEmit: Date.now(), repeating: false })
@@ -123,7 +123,7 @@ function pollGamepads() {
           if (elapsed >= threshold) {
             const buttonName = Object.entries(GAMEPAD_BUTTONS).find(([_, bi]) => bi === index)?.[0]
             if (buttonName) {
-              buttonHandlers.forEach(handler => handler(buttonName, true))
+              buttonHandlers.forEach(handler => handler(buttonName, true, true))
             }
             hold.lastEmit = now
             hold.repeating = true
