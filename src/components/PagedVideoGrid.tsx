@@ -116,7 +116,7 @@ export default function PagedVideoGrid({
   }, [initialFocusIndex, videos.length])
 
   useEffect(() => {
-    if (onLoadMore && (pageIndex + 1) * PAGE_SIZE >= videos.length && continuation) {
+    if (onLoadMore && (pageIndex + 2) * PAGE_SIZE >= videos.length && continuation) {
       onLoadMore()
     }
   }, [pageIndex, videos.length, continuation, onLoadMore])

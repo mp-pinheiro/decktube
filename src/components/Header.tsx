@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { routes } from '../routes'
 import { isAuthenticated, logout } from '../lib/oauth'
 import { Search, PlaySquare } from 'lucide-react'
@@ -7,15 +7,23 @@ import { useInputContext } from '../contexts/InputContext'
 export default function Header() {
   const authenticated = isAuthenticated()
   const { searchText, openVirtualKeyboard } = useInputContext()
+  const location = useLocation()
 
   const handleLogout = () => {
     logout()
     window.location.href = routes.home
   }
 
+  const handleLogoClick = (e: React.MouseEvent) => {
+    if (location.pathname === routes.home) {
+      e.preventDefault()
+      window.dispatchEvent(new CustomEvent('home-refresh'))
+    }
+  }
+
   return (
     <header className="fixed top-0 left-0 right-0 h-16 bg-zinc-950/80 backdrop-blur-xl border-b border-white/5 flex items-center justify-between px-6 z-30">
-      <Link to={routes.home} id="home-link" tabIndex={0} className="flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-red-500 rounded-lg">
+      <Link to={routes.home} id="home-link" tabIndex={0} onClick={handleLogoClick} className="flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-red-500 rounded-lg">
         <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center shadow-[0_0_15px_rgba(220,38,38,0.4)]">
           <PlaySquare size={18} className="text-white fill-white" />
         </div>
