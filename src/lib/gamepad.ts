@@ -154,7 +154,35 @@ export function initGamepad(handler: GamepadButtonHandler) {
     initialSetupTimer = setTimeout(() => { initialSetupDone = true }, 2000)
   }
 
+  // Detect gamepads already connected before the app launched.
+  // Chromium may not fire gamepadconnected for these (requires user interaction),
+  // or the event may fire before React mounts and our listeners are registered.
+  // We probe periodically and dispatch synthetic gamepadconnected events so that
+  // all listeners (including InputProvider's focus bootstrap) get notified.
+  const knownIndices = new Set<number>()
+  let startupProbeCount = 0
+  const emitForExisting = () => {
+    for (const gp of navigator.getGamepads()) {
+      if (gp && !knownIndices.has(gp.index)) {
+        knownIndices.add(gp.index)
+        console.log('[Gamepad] Found already-connected gamepad:', gp.id, 'at index', gp.index)
+        window.dispatchEvent(new GamepadEvent('gamepadconnected', { gamepad: gp }))
+      }
+    }
+  }
+  const startupProbe = setInterval(() => {
+    startupProbeCount++
+    emitForExisting()
+    if (knownIndices.size > 0 || startupProbeCount >= 10) {
+      clearInterval(startupProbe)
+    }
+  }, 500)
+  // Also check immediately (in case getGamepads() already has entries)
+  requestAnimationFrame(emitForExisting)
+
   const handleConnect = (e: GamepadEvent) => {
+    if (knownIndices.has(e.gamepad.index)) return
+    knownIndices.add(e.gamepad.index)
     hadGamepads = true
     if (gamepadLossTimer) { clearTimeout(gamepadLossTimer); gamepadLossTimer = null }
     const isSteam = isSteamController(e.gamepad)
@@ -168,6 +196,7 @@ export function initGamepad(handler: GamepadButtonHandler) {
   }
 
   const handleDisconnect = (e: GamepadEvent) => {
+    knownIndices.delete(e.gamepad.index)
     console.log('[Gamepad] Disconnected:', e.gamepad.id, 'at index', e.gamepad.index)
     previousButtonStates.delete(e.gamepad.index)
     for (const key of buttonHoldState.keys()) {
@@ -196,6 +225,7 @@ export function initGamepad(handler: GamepadButtonHandler) {
   window.addEventListener('gamepaddisconnected', handleDisconnect)
 
   return () => {
+    clearInterval(startupProbe)
     buttonHandlers = buttonHandlers.filter(h => h !== handler)
     if (buttonHandlers.length === 0 && animationFrameId) {
       cancelAnimationFrame(animationFrameId)

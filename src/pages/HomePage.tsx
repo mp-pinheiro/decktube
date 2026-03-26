@@ -134,7 +134,23 @@ export default function HomePage() {
     return () => window.removeEventListener('firestore-sync', onSync)
   }, [fetchHistory])
 
+  useEffect(() => {
+    const onRefresh = () => {
+      setTabStates({
+        recommended: emptyTabState(),
+        subscriptions: emptyTabState(),
+        history: emptyTabState(),
+      })
+      setWatchedIds(getWatchedSet())
+      pageIndexRef.current = {}
+    }
+    window.addEventListener('home-refresh', onRefresh)
+    return () => window.removeEventListener('home-refresh', onRefresh)
+  }, [])
+
+  const loadingMoreRef = useRef(false)
   const loadMore = useCallback(async () => {
+    if (loadingMoreRef.current) return
     const tab = activeTabRef.current
     const cont = tabStates[tab]?.continuation
     if (!cont) return
@@ -147,6 +163,7 @@ export default function HomePage() {
 
     if (!fetchContinuation) return
 
+    loadingMoreRef.current = true
     try {
       const result = await fetchContinuation(cont)
       setTabStates(prev => {
@@ -160,6 +177,8 @@ export default function HomePage() {
       })
     } catch (err) {
       console.error('Failed to load more:', err)
+    } finally {
+      loadingMoreRef.current = false
     }
   }, [tabStates])
 

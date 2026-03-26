@@ -198,7 +198,7 @@ function parseVideoRenderer(renderer: VideoRenderer | CompactVideoRenderer | und
   }
 }
 
-function isLiveOrMix(renderer: any): boolean {
+function isFilteredOut(renderer: any): boolean {
   if (renderer.badges) {
     for (const badge of renderer.badges) {
       const meta = badge.metadataBadgeRenderer
@@ -211,9 +211,11 @@ function isLiveOrMix(renderer: any): boolean {
   if (renderer.thumbnailOverlays) {
     for (const overlay of renderer.thumbnailOverlays) {
       const style = overlay.thumbnailOverlayTimeStatusRenderer?.style
-      if (style === 'LIVE' || style === 'UPCOMING') return true
+      if (style === 'LIVE' || style === 'UPCOMING' || style === 'SHORTS') return true
     }
   }
+
+  if (renderer.navigationEndpoint?.reelWatchEndpoint) return true
 
   const playlistId = renderer.navigationEndpoint?.watchEndpoint?.playlistId
   if (typeof playlistId === 'string' && playlistId.startsWith('RD')) return true
@@ -239,22 +241,24 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
     const item = current as Record<string, unknown>
 
     if ('videoRenderer' in item) {
-      if (!isLiveOrMix(item.videoRenderer)) {
+      if (!isFilteredOut(item.videoRenderer)) {
         const video = parseVideoRenderer(item.videoRenderer as VideoRenderer)
         if (video) videos.push(video)
       }
     } else if ('compactVideoRenderer' in item) {
-      if (!isLiveOrMix(item.compactVideoRenderer)) {
+      if (!isFilteredOut(item.compactVideoRenderer)) {
         const video = parseVideoRenderer(item.compactVideoRenderer as CompactVideoRenderer)
         if (video) videos.push(video)
       }
     } else if ('gridVideoRenderer' in item) {
-      if (!isLiveOrMix(item.gridVideoRenderer)) {
+      if (!isFilteredOut(item.gridVideoRenderer)) {
         const video = parseVideoRenderer(item.gridVideoRenderer as VideoRenderer)
         if (video) videos.push(video)
       }
     } else if ('lockupViewModel' in item) {
       const lockup = (item as { lockupViewModel: { contentId?: string; thumbnail?: unknown; metadata?: unknown; rendererContext?: any } }).lockupViewModel
+      if (lockup.contentId?.startsWith('shorts:')) return
+      if (lockup.rendererContext?.commandContext?.onTap?.innertubeCommand?.reelWatchEndpoint) return
       if (lockup.contentId?.startsWith('video:')) {
         const videoId = lockup.contentId.replace('video:', '')
         const thumbnail = lockup.thumbnail as { thumbnailViewModel?: { image?: { sources?: Array<{ url?: string }> } } }
@@ -347,12 +351,12 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
         }
 
         let duration: number | undefined
-        let isLive = false
+        let isExcluded = false
         const overlays = tile.header?.tileHeaderRenderer?.thumbnailOverlays || []
         for (const overlay of overlays) {
           const timeStatus = overlay.thumbnailOverlayTimeStatusRenderer
-          if (timeStatus?.style === 'LIVE') {
-            isLive = true
+          if (timeStatus?.style === 'LIVE' || timeStatus?.style === 'SHORTS') {
+            isExcluded = true
             break
           }
           const durationText = timeStatus?.text?.simpleText
@@ -360,7 +364,7 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
             duration = parseDuration(durationText)
           }
         }
-        if (isLive) return
+        if (isExcluded) return
 
         const lines = tile.metadata?.tileMetadataRenderer?.lines || []
         let channelName = ''
@@ -398,6 +402,9 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
           publishedTimeText: publishedTimeText || undefined,
         })
       }
+    } else if ('reelShelfRenderer' in item || 'reelItemRenderer' in item || 'shortsLockupViewModel' in item) {
+      // Skip shorts-specific renderers entirely
+      return
     } else {
       for (const key in item) {
         if (typeof item[key] === 'object' && item[key] !== null) {
