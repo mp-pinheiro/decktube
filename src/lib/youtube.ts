@@ -403,7 +403,6 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
         })
       }
     } else if ('reelShelfRenderer' in item || 'reelItemRenderer' in item || 'shortsLockupViewModel' in item) {
-      // Skip shorts-specific renderers entirely
       return
     } else {
       for (const key in item) {

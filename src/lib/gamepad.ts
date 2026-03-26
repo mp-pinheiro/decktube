@@ -154,11 +154,8 @@ export function initGamepad(handler: GamepadButtonHandler) {
     initialSetupTimer = setTimeout(() => { initialSetupDone = true }, 2000)
   }
 
-  // Detect gamepads already connected before the app launched.
-  // Chromium may not fire gamepadconnected for these (requires user interaction),
-  // or the event may fire before React mounts and our listeners are registered.
-  // We probe periodically and dispatch synthetic gamepadconnected events so that
-  // all listeners (including InputProvider's focus bootstrap) get notified.
+  // NOTE: Chromium may not fire gamepadconnected for already-connected gamepads.
+  // Probe and dispatch synthetic events so InputProvider's bootstrap fires.
   const knownIndices = new Set<number>()
   let startupProbeCount = 0
   const emitForExisting = () => {
@@ -177,7 +174,6 @@ export function initGamepad(handler: GamepadButtonHandler) {
       clearInterval(startupProbe)
     }
   }, 500)
-  // Also check immediately (in case getGamepads() already has entries)
   requestAnimationFrame(emitForExisting)
 
   const handleConnect = (e: GamepadEvent) => {
