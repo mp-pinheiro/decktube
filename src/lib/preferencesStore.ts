@@ -5,9 +5,10 @@ const STORAGE_KEY = 'yt_user_preferences'
 export interface UserPreferences {
   volume: number
   quality: string
+  sponsorBlockEnabled: boolean
 }
 
-const DEFAULTS: UserPreferences = { volume: 100, quality: 'Auto' }
+const DEFAULTS: UserPreferences = { volume: 100, quality: 'Auto', sponsorBlockEnabled: true }
 
 function loadPreferences(): UserPreferences {
   try {
@@ -41,6 +42,13 @@ export function setVolume(volume: number): void {
 export function setQuality(label: string): void {
   const prefs = loadPreferences()
   prefs.quality = label
+  storePreferences(prefs)
+  syncPreferences(prefs)
+}
+
+export function setSponsorBlock(enabled: boolean): void {
+  const prefs = loadPreferences()
+  prefs.sponsorBlockEnabled = enabled
   storePreferences(prefs)
   syncPreferences(prefs)
 }

@@ -5,12 +5,14 @@ import { MediaPlayer, type MediaPlayerClass, type Representation } from 'dashjs'
 import { getVideoDetails, getPlayerData, generateMpd, getRelatedVideos, type YouTubeVideo, type MuxedFormat, generateCpn, reportPlaybackStart, reportWatchtime } from '../lib/youtube'
 import { savePlaybackPosition, getPlaybackPosition, clearPlaybackPosition } from '../lib/playbackStore'
 import { markWatched } from '../lib/watchedStore'
-import { getPreferences, setVolume as persistVolume, setQuality as persistQuality } from '../lib/preferencesStore'
+import { getPreferences, setVolume as persistVolume, setQuality as persistQuality, setSponsorBlock as persistSponsorBlock } from '../lib/preferencesStore'
 import { useInputContext } from '../contexts/InputProvider'
 import QualitySelector, { type QualityOption } from '../components/QualitySelector'
 import PlayerOverlay from '../components/PlayerOverlay'
 import AutoPlayOverlay from '../components/AutoPlayOverlay'
+import ActionMenu from '../components/ActionMenu'
 import { formatViews } from '../lib/format'
+import { getSegments, getCategoryLabel, type SponsorSegment } from '../lib/sponsorblock'
 
 function heightToLabel(height: number): string {
   if (height >= 2160) return '4K'
@@ -60,6 +62,16 @@ export default function WatchPage() {
 
   const cpnRef = useRef<string>(generateCpn())
   const playbackStartedRef = useRef(false)
+
+  const [sponsorSegments, setSponsorSegments] = useState<SponsorSegment[]>([])
+  const sbSegmentsRef = useRef<SponsorSegment[]>([])
+  const [sponsorBlockEnabled, setSponsorBlockEnabled] = useState(() => getPreferences().sponsorBlockEnabled)
+  const sponsorBlockEnabledRef = useRef(sponsorBlockEnabled)
+  sponsorBlockEnabledRef.current = sponsorBlockEnabled
+  const lastSkippedRef = useRef<string | null>(null)
+  const [sponsorSkipAction, setSponsorSkipAction] = useState(0)
+  const [sponsorSkipLabel, setSponsorSkipLabel] = useState('')
+  const [menuOpen, setMenuOpen] = useState(false)
 
   const [nextVideo, setNextVideo] = useState<YouTubeVideo | null>(null)
   const [autoPlayVisible, setAutoPlayVisible] = useState(false)
@@ -175,6 +187,9 @@ export default function WatchPage() {
     setDashQualities([])
     setCurrentQuality('auto')
     setAutoPlayVisible(false)
+    setSponsorSegments([])
+    sbSegmentsRef.current = []
+    lastSkippedRef.current = null
     destroyDash()
 
     cpnRef.current = generateCpn()
@@ -183,14 +198,18 @@ export default function WatchPage() {
     let cancelled = false
 
     async function load() {
-      const [details, playerData] = await Promise.all([
+      const [details, playerData, sbSegments] = await Promise.all([
         getVideoDetails(videoId!),
         getPlayerData(videoId!),
+        getSegments(videoId!),
       ])
 
       if (cancelled) return
 
       setVideoData(details)
+      setSponsorSegments(sbSegments)
+      sbSegmentsRef.current = sbSegments
+      lastSkippedRef.current = null
 
       const { mpd: mpdXml, representationCount } = generateMpd(playerData.adaptiveFormats)
 
@@ -307,6 +326,7 @@ export default function WatchPage() {
     }
 
     const onSeeked = () => {
+      lastSkippedRef.current = null
       if (!videoId) return
       const dp = dashPlayerRef.current
       const duration = dp ? dp.duration() : video.duration
@@ -325,6 +345,34 @@ export default function WatchPage() {
       video.removeEventListener('ended', onEnded)
       video.removeEventListener('seeked', onSeeked)
     }
+  }, [videoId])
+
+  useEffect(() => {
+    const video = videoElRef.current
+    if (!video) return
+
+    const onTimeUpdate = () => {
+      if (!sponsorBlockEnabledRef.current) return
+      const segments = sbSegmentsRef.current
+      if (segments.length === 0) return
+      const t = video.currentTime
+      for (const seg of segments) {
+        if (seg.actionType !== 'skip') continue
+        const [start, end] = seg.segment
+        if (t >= start && t < end - 0.5) {
+          if (lastSkippedRef.current === seg.UUID) continue
+          lastSkippedRef.current = seg.UUID
+          console.info(`[SponsorBlock] Skipping ${seg.category}: ${start.toFixed(1)}s -> ${end.toFixed(1)}s`)
+          video.currentTime = end
+          setSponsorSkipLabel(getCategoryLabel(seg.category))
+          setSponsorSkipAction(c => c + 1)
+          break
+        }
+      }
+    }
+
+    video.addEventListener('timeupdate', onTimeUpdate)
+    return () => video.removeEventListener('timeupdate', onTimeUpdate)
   }, [videoId])
 
   const togglePlay = useCallback(() => {
@@ -446,6 +494,20 @@ export default function WatchPage() {
     navigate(-1)
   }, [navigate])
 
+  const openMenu = useCallback(() => {
+    setMenuOpen(true)
+  }, [])
+
+  const handleMenuAction = useCallback((actionId: string) => {
+    if (actionId === 'toggle-sponsorblock') {
+      const next = !sponsorBlockEnabledRef.current
+      setSponsorBlockEnabled(next)
+      sponsorBlockEnabledRef.current = next
+      persistSponsorBlock(next)
+    }
+    setMenuOpen(false)
+  }, [])
+
   useEffect(() => {
     registerActions({
       play: togglePlay,
@@ -453,13 +515,14 @@ export default function WatchPage() {
       fullscreen: toggleFullscreen,
       quality: toggleQuality,
       next: handleAutoPlay,
+      mode: openMenu,
       nav_up: () => setVolume(Math.min(100, volume + 10)),
       nav_down: () => setVolume(Math.max(0, volume - 10)),
       nav_left: () => seek(-1),
       nav_right: () => seek(1),
     })
     return () => unregisterActions()
-  }, [registerActions, unregisterActions, togglePlay, goToChannel, toggleFullscreen, toggleQuality, handleAutoPlay, seek, setVolume, volume])
+  }, [registerActions, unregisterActions, togglePlay, goToChannel, toggleFullscreen, toggleQuality, handleAutoPlay, openMenu, seek, setVolume, volume])
 
   if (!videoId) {
     return (
@@ -500,6 +563,9 @@ export default function WatchPage() {
           volume={volume}
           qualityAction={qualityAction}
           qualityLabel={qualityLabel}
+          sponsorSkipAction={sponsorSkipAction}
+          sponsorSkipLabel={sponsorSkipLabel}
+          sponsorSegments={sponsorBlockEnabled ? sponsorSegments : []}
           videoEl={videoElRef.current}
           dashPlayer={dashPlayerRef.current}
         />
@@ -529,6 +595,15 @@ export default function WatchPage() {
           />
         )}
       </div>
+
+      <ActionMenu
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        items={[
+          { id: 'toggle-sponsorblock', label: `SponsorBlock: ${sponsorBlockEnabled ? 'On' : 'Off'}` },
+        ]}
+        onSelect={handleMenuAction}
+      />
 
       <div className="shrink-0 mt-6 flex items-start justify-between gap-4">
         <div className="min-w-0">

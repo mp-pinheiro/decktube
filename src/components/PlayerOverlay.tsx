@@ -4,6 +4,8 @@ import PlayPauseIndicator from './overlay/PlayPauseIndicator'
 import SeekIndicator from './overlay/SeekIndicator'
 import VolumeIndicator from './overlay/VolumeIndicator'
 import QualityIndicator from './overlay/QualityIndicator'
+import SponsorSkipIndicator from './overlay/SponsorSkipIndicator'
+import type { SponsorSegment } from '../lib/sponsorblock'
 
 export function useAutoFade(trigger: number, durationMs: number): boolean {
   const [visible, setVisible] = useState(false)
@@ -29,6 +31,9 @@ interface PlayerOverlayProps {
   volume: number
   qualityAction: number
   qualityLabel: string
+  sponsorSkipAction: number
+  sponsorSkipLabel: string
+  sponsorSegments: SponsorSegment[]
   videoEl: HTMLVideoElement | null
   dashPlayer: MediaPlayerClass | null
 }
@@ -42,6 +47,9 @@ export default function PlayerOverlay({
   volume,
   qualityAction,
   qualityLabel,
+  sponsorSkipAction,
+  sponsorSkipLabel,
+  sponsorSegments,
   videoEl,
   dashPlayer,
 }: PlayerOverlayProps) {
@@ -49,8 +57,9 @@ export default function PlayerOverlay({
     <div className="absolute inset-0 z-20 pointer-events-none">
       <PlayPauseIndicator trigger={playAction} paused={paused} />
       <VolumeIndicator trigger={volumeAction} volume={volume} paused={paused} />
-      <SeekIndicator trigger={seekAction} seekDelta={seekDelta} videoEl={videoEl} dashPlayer={dashPlayer} paused={paused} />
+      <SeekIndicator trigger={seekAction} seekDelta={seekDelta} videoEl={videoEl} dashPlayer={dashPlayer} paused={paused} segments={sponsorSegments} />
       <QualityIndicator trigger={qualityAction} label={qualityLabel} paused={paused} />
+      <SponsorSkipIndicator trigger={sponsorSkipAction} label={sponsorSkipLabel} paused={paused} />
     </div>
   )
 }

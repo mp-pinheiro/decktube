@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import type { MediaPlayerClass } from 'dashjs'
 import { useAutoFade } from '../PlayerOverlay'
+import type { SponsorSegment } from '../../lib/sponsorblock'
 
 interface SeekIndicatorProps {
   trigger: number
@@ -9,6 +10,7 @@ interface SeekIndicatorProps {
   videoEl: HTMLVideoElement | null
   dashPlayer: MediaPlayerClass | null
   paused: boolean
+  segments?: SponsorSegment[]
 }
 
 function formatTime(seconds: number): string {
@@ -21,7 +23,7 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-export default function SeekIndicator({ trigger, seekDelta, videoEl, dashPlayer, paused }: SeekIndicatorProps) {
+export default function SeekIndicator({ trigger, seekDelta, videoEl, dashPlayer, paused, segments }: SeekIndicatorProps) {
   const seekActive = useAutoFade(trigger, 2500)
   const expanded = seekActive || paused
   const [progress, setProgress] = useState(0)
@@ -40,8 +42,8 @@ export default function SeekIndicator({ trigger, seekDelta, videoEl, dashPlayer,
   const updateProgress = useCallback(() => {
     if (!videoEl) return
 
-    const dur = dashPlayer ? dashPlayer.duration() : 0
-    const cur = dashPlayer ? dashPlayer.time() : videoEl.currentTime || 0
+    const dur = dashPlayer?.isReady() ? dashPlayer.duration() : 0
+    const cur = dashPlayer?.isReady() ? dashPlayer.time() : videoEl.currentTime || 0
     const safeDur = isFinite(dur) && dur > 0 ? dur : 0
 
     setDuration(safeDur)
@@ -93,6 +95,17 @@ export default function SeekIndicator({ trigger, seekDelta, videoEl, dashPlayer,
           style={{ height: expanded ? 10 : 3 }}
         >
           <div className="absolute inset-0 bg-white/20" />
+          {duration > 0 && segments?.map(seg => {
+            const left = (seg.segment[0] / duration) * 100
+            const width = ((seg.segment[1] - seg.segment[0]) / duration) * 100
+            return (
+              <div
+                key={seg.UUID}
+                className="absolute inset-y-0 bg-green-400/50"
+                style={{ left: `${left}%`, width: `${width}%` }}
+              />
+            )
+          })}
           <div
             className="absolute inset-y-0 left-0 bg-white/30"
             style={{ width: `${buffered * 100}%` }}
