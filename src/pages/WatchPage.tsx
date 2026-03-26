@@ -388,18 +388,24 @@ export default function WatchPage() {
     }
   }, [])
 
+  const SEEK_TIERS = [
+    { holdMs: 5000, seekSec: 300 },
+    { holdMs: 3000, seekSec: 120 },
+    { holdMs: 2000, seekSec: 60 },
+    { holdMs: 0, seekSec: 10 },
+  ]
+
   const seekHoldStartRef = useRef(0)
 
   const seek = useCallback((direction: number, isRepeat = false) => {
     const video = videoElRef.current
     if (!video) return
 
-    let amount = 10
+    let amount = SEEK_TIERS[SEEK_TIERS.length - 1].seekSec
     if (isRepeat) {
       if (!seekHoldStartRef.current) seekHoldStartRef.current = Date.now()
       const held = Date.now() - seekHoldStartRef.current
-      if (held >= 3000) amount = 360
-      else if (held >= 1500) amount = 120
+      amount = SEEK_TIERS.find(t => held >= t.holdMs)!.seekSec
     } else {
       seekHoldStartRef.current = 0
     }
