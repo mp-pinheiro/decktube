@@ -302,6 +302,7 @@ export default function WatchPage() {
 
     const onPlay = () => {
       setPaused(false)
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'
 
       if (!playbackStartedRef.current && videoId) {
         playbackStartedRef.current = true
@@ -315,6 +316,7 @@ export default function WatchPage() {
 
     const onPause = () => {
       setPaused(true)
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused'
     }
 
     const onEnded = () => {
@@ -346,6 +348,36 @@ export default function WatchPage() {
       video.removeEventListener('seeked', onSeeked)
     }
   }, [videoId])
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return
+
+    const ms = navigator.mediaSession
+    const playHandler = () => { videoElRef.current?.play() }
+    const pauseHandler = () => { videoElRef.current?.pause() }
+    const nextHandler = () => { if (nextVideoRef.current) navigate(`/watch/${nextVideoRef.current.videoId}`) }
+
+    ms.setActionHandler('play', playHandler)
+    ms.setActionHandler('pause', pauseHandler)
+    ms.setActionHandler('nexttrack', nextHandler)
+
+    if (videoData) {
+      const thumb = videoData.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
+      ms.metadata = new MediaMetadata({
+        title: videoData.title,
+        artist: videoData.channelName || '',
+        artwork: [{ src: thumb, type: 'image/jpeg' }],
+      })
+    }
+
+    return () => {
+      ms.setActionHandler('play', null)
+      ms.setActionHandler('pause', null)
+      ms.setActionHandler('nexttrack', null)
+      ms.metadata = null
+      ms.playbackState = 'none'
+    }
+  }, [videoData, videoId, navigate])
 
   useEffect(() => {
     const video = videoElRef.current
