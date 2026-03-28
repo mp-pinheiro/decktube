@@ -53,6 +53,9 @@ let lastSteamActiveFrame = -OVERLAY_WINDOW
 let overlaySuppressed = false
 let frameCount = 0
 
+const lastButtonEmitTime = new Map<string, number>()
+const BUTTON_DEDUP_MS = 16
+
 const DPAD_BUTTONS: Set<number> = new Set([
   GAMEPAD_BUTTONS.DPAD_UP, GAMEPAD_BUTTONS.DPAD_DOWN,
   GAMEPAD_BUTTONS.DPAD_LEFT, GAMEPAD_BUTTONS.DPAD_RIGHT,
@@ -166,7 +169,12 @@ function pollGamepads() {
       if (isPressed && !wasPressed) {
         const buttonName = Object.entries(GAMEPAD_BUTTONS).find(([_, bi]) => bi === index)?.[0]
         if (buttonName) {
-          buttonHandlers.forEach(handler => handler(buttonName, true, false))
+          const now = performance.now()
+          const lastEmit = lastButtonEmitTime.get(buttonName) ?? 0
+          if (now - lastEmit >= BUTTON_DEDUP_MS) {
+            lastButtonEmitTime.set(buttonName, now)
+            buttonHandlers.forEach(handler => handler(buttonName, true, false))
+          }
         }
         if (DPAD_BUTTONS.has(index)) {
           buttonHoldState.set(holdKey, { lastEmit: Date.now(), repeating: false })
@@ -180,7 +188,12 @@ function pollGamepads() {
           if (elapsed >= threshold) {
             const buttonName = Object.entries(GAMEPAD_BUTTONS).find(([_, bi]) => bi === index)?.[0]
             if (buttonName) {
-              buttonHandlers.forEach(handler => handler(buttonName, true, true))
+              const perfNow = performance.now()
+              const lastBtnEmit = lastButtonEmitTime.get(buttonName) ?? 0
+              if (perfNow - lastBtnEmit >= BUTTON_DEDUP_MS) {
+                lastButtonEmitTime.set(buttonName, perfNow)
+                buttonHandlers.forEach(handler => handler(buttonName, true, true))
+              }
             }
             hold.lastEmit = now
             hold.repeating = true

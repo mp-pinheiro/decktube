@@ -17,6 +17,7 @@ export function InputProvider({ children }: InputProviderProps) {
   const actionsRef = useRef<Partial<Record<ButtonAction, (isRepeat?: boolean) => void>>>({})
   const locationKeyRef = useRef(location.key)
   const lastGamepadActionRef = useRef(0)
+  const lastNavIntentRef = useRef(new Map<string, number>())
 
   const [virtualKeyboardOpen, setVirtualKeyboardOpen] = useState(false)
   const [searchText, setSearchText] = useState('')
@@ -72,6 +73,13 @@ export function InputProvider({ children }: InputProviderProps) {
       const isInputFocused = activeEl?.tagName === 'INPUT' || activeEl?.tagName === 'TEXTAREA'
 
       if (isInputFocused && intent !== 'back' && intent !== 'help') return false
+
+      if (intent.startsWith('nav_')) {
+        const now = Date.now()
+        const lastTime = lastNavIntentRef.current.get(intent) ?? 0
+        if (now - lastTime < 50) return true
+        lastNavIntentRef.current.set(intent, now)
+      }
 
       const actions = actionsRef.current
 
