@@ -7,7 +7,7 @@ import { createProxyMiddleware } from 'http-proxy-middleware'
 import express from 'express'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
-import { appendFileSync, writeFileSync } from 'fs'
+import { appendFileSync, readFileSync, writeFileSync } from 'fs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const isDev = !!process.env.VITE_DEV_SERVER_URL
@@ -192,6 +192,14 @@ async function createWindow() {
 
   mainWindow.webContents.on('did-finish-load', () => {
     console.log('[Window] Page loaded')
+    try {
+      const devices = readFileSync('/proc/bus/input/devices', 'utf8')
+      const hasGamepad = /Handlers=.*js\d/m.test(devices)
+      if (hasGamepad) {
+        logToFile('[Gamepad] System gamepads detected via /proc/bus/input/devices')
+        mainWindow.webContents.send('system-gamepads-detected', true)
+      }
+    } catch {}
   })
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
     console.error(`[Window] Page failed to load: ${errorCode} ${errorDescription}`)

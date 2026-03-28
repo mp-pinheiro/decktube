@@ -12,6 +12,7 @@ let nextId = 0
 
 export default function GamepadToast() {
   const [toasts, setToasts] = useState<Toast[]>([])
+  const [activationNeeded, setActivationNeeded] = useState(false)
 
   const dismiss = useCallback((id: number) => {
     setToasts(prev => prev.filter(t => t.id !== id))
@@ -30,9 +31,33 @@ export default function GamepadToast() {
     return () => window.removeEventListener('gamepad-toast', handler)
   }, [dismiss])
 
+  useEffect(() => {
+    const onNeeded = () => setActivationNeeded(true)
+    const onActivated = () => setActivationNeeded(false)
+    window.addEventListener('gamepad-activation-needed', onNeeded)
+    window.addEventListener('gamepad-activated', onActivated)
+    return () => {
+      window.removeEventListener('gamepad-activation-needed', onNeeded)
+      window.removeEventListener('gamepad-activated', onActivated)
+    }
+  }, [])
+
   return (
     <div className="fixed top-20 left-6 z-50 flex flex-col gap-2 pointer-events-none">
       <AnimatePresence>
+        {activationNeeded && (
+          <motion.div
+            key="activation"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20, transition: { duration: 0.2 } }}
+            transition={{ duration: 0.15 }}
+            className="flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-sm text-sm font-medium bg-zinc-800/80 text-zinc-100"
+          >
+            <Gamepad2 className="w-4 h-4 shrink-0" />
+            Controller detected -- press any button to activate
+          </motion.div>
+        )}
         {toasts.map(toast => (
           <motion.div
             key={toast.id}

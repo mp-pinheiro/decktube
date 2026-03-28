@@ -27,6 +27,8 @@ function isSteamController(gamepad: Gamepad): boolean {
   return id.includes('28de') || id.includes('valve') || id.includes('steam')
 }
 
+let steamDisconnected = false
+
 function filterGamepads(raw: (Gamepad | null)[]): Gamepad[] {
   const all: Gamepad[] = []
   const steam: Gamepad[] = []
@@ -35,12 +37,21 @@ function filterGamepads(raw: (Gamepad | null)[]): Gamepad[] {
     all.push(gp)
     if (isSteamController(gp)) steam.push(gp)
   }
+  // When a Steam virtual controller disconnected, some physical devices
+  // (e.g. Xbox) may lack virtual counterparts. Include raw devices.
+  if (steamDisconnected && all.length > steam.length) return all
   return steam.length > 0 ? steam : all
 }
 
 let animationFrameId: number | null = null
 let buttonHandlers: GamepadButtonHandler[] = []
 const previousButtonStates = new Map<number, boolean[]>()
+
+const lastTimestamps = new Map<number, number>()
+const OVERLAY_WINDOW = 180 // ~3s at 60fps
+let lastSteamActiveFrame = -OVERLAY_WINDOW
+let overlaySuppressed = false
+let frameCount = 0
 
 const DPAD_BUTTONS: Set<number> = new Set([
   GAMEPAD_BUTTONS.DPAD_UP, GAMEPAD_BUTTONS.DPAD_DOWN,
@@ -60,6 +71,7 @@ let restartAttempted = false
 let gamepadLossTimer: ReturnType<typeof setTimeout> | null = null
 let initialSetupDone = false
 let initialSetupTimer: ReturnType<typeof setTimeout> | null = null
+let systemGamepadsDetected = false
 
 function initWindowFocusTracking() {
   if (windowFocusInitialised) return
@@ -97,6 +109,51 @@ function pollGamepads() {
   }
 
   const gamepads = filterGamepads([...navigator.getGamepads()])
+  frameCount++
+
+  // Overlay detection: when polling both Steam virtual and raw devices,
+  // use the Steam virtual controller's timestamp as a canary.
+  // Steam stops updating virtual controllers when the overlay is active.
+  const steamPads = gamepads.filter(gp => isSteamController(gp))
+  const rawPads = gamepads.filter(gp => !isSteamController(gp))
+
+  if (steamPads.length > 0 && rawPads.length > 0) {
+    let steamAdvanced = false
+    for (const gp of steamPads) {
+      const prevTs = lastTimestamps.get(gp.index)
+      if (prevTs !== undefined && gp.timestamp !== prevTs) steamAdvanced = true
+      lastTimestamps.set(gp.index, gp.timestamp)
+    }
+    if (steamAdvanced) lastSteamActiveFrame = frameCount
+
+    const steamRecentlyActive = (frameCount - lastSteamActiveFrame) < OVERLAY_WINDOW
+    const rawActive = rawPads.some(gp => gp.buttons.some(b => b.pressed))
+
+    if (!steamAdvanced && steamRecentlyActive && rawActive && !overlaySuppressed) {
+      overlaySuppressed = true
+      previousButtonStates.clear()
+      buttonHoldState.clear()
+      console.log('[Gamepad] Steam virtual stalled with raw activity – suppressing (likely overlay)')
+    }
+    if (steamAdvanced && overlaySuppressed) {
+      overlaySuppressed = false
+      previousButtonStates.clear()
+      buttonHoldState.clear()
+      console.log('[Gamepad] Steam virtual resumed – unsuppressing')
+    }
+    if (overlaySuppressed) {
+      animationFrameId = requestAnimationFrame(pollGamepads)
+      return
+    }
+  } else {
+    // Only Steam or only raw devices -- update timestamps, no overlay detection needed
+    for (const gp of gamepads) lastTimestamps.set(gp.index, gp.timestamp)
+    if (overlaySuppressed) {
+      overlaySuppressed = false
+      previousButtonStates.clear()
+      buttonHoldState.clear()
+    }
+  }
 
   for (const gamepad of gamepads) {
     const prevStates = previousButtonStates.get(gamepad.index) ?? []
@@ -154,6 +211,17 @@ export function initGamepad(handler: GamepadButtonHandler) {
     initialSetupTimer = setTimeout(() => { initialSetupDone = true }, 2000)
   }
 
+  const api = (window as any).electronAPI
+  if (api?.onSystemGamepads) {
+    api.onSystemGamepads((detected: boolean) => {
+      systemGamepadsDetected = detected
+      if (detected && filterGamepads([...navigator.getGamepads()]).length === 0) {
+        console.log('[Gamepad] System gamepads detected but Gamepad API not yet active')
+        window.dispatchEvent(new CustomEvent('gamepad-activation-needed'))
+      }
+    })
+  }
+
   // NOTE: Chromium may not fire gamepadconnected for already-connected gamepads.
   // Probe and dispatch synthetic events so InputProvider's bootstrap fires.
   const knownIndices = new Set<number>()
@@ -170,7 +238,7 @@ export function initGamepad(handler: GamepadButtonHandler) {
   const startupProbe = setInterval(() => {
     startupProbeCount++
     emitForExisting()
-    if (knownIndices.size > 0 || startupProbeCount >= 10) {
+    if (knownIndices.size > 0 || startupProbeCount >= 30) {
       clearInterval(startupProbe)
     }
   }, 500)
@@ -189,12 +257,17 @@ export function initGamepad(handler: GamepadButtonHandler) {
     if (initialSetupDone && !isSteam) {
       emitToast('Controller connected')
     }
+    if (systemGamepadsDetected) {
+      window.dispatchEvent(new CustomEvent('gamepad-activated'))
+    }
   }
 
   const handleDisconnect = (e: GamepadEvent) => {
     knownIndices.delete(e.gamepad.index)
+    if (isSteamController(e.gamepad)) steamDisconnected = true
     console.log('[Gamepad] Disconnected:', e.gamepad.id, 'at index', e.gamepad.index)
     previousButtonStates.delete(e.gamepad.index)
+    lastTimestamps.delete(e.gamepad.index)
     for (const key of buttonHoldState.keys()) {
       if (key.startsWith(`${e.gamepad.index}-`)) buttonHoldState.delete(key)
     }

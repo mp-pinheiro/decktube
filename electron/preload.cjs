@@ -23,4 +23,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('window-focus', listener)
     return () => ipcRenderer.removeListener('window-focus', listener)
   },
+  onSystemGamepads: (callback) => {
+    const listener = (_event, detected) => callback(detected)
+    ipcRenderer.on('system-gamepads-detected', listener)
+    return () => ipcRenderer.removeListener('system-gamepads-detected', listener)
+  },
 })
