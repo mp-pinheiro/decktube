@@ -27,8 +27,6 @@ function isSteamController(gamepad: Gamepad): boolean {
   return id.includes('28de') || id.includes('valve') || id.includes('steam')
 }
 
-let steamDisconnected = false
-
 function filterGamepads(raw: (Gamepad | null)[]): Gamepad[] {
   const all: Gamepad[] = []
   const steam: Gamepad[] = []
@@ -37,21 +35,12 @@ function filterGamepads(raw: (Gamepad | null)[]): Gamepad[] {
     all.push(gp)
     if (isSteamController(gp)) steam.push(gp)
   }
-  // When a Steam virtual controller disconnected, some physical devices
-  // (e.g. Xbox) may lack virtual counterparts. Include raw devices.
-  if (steamDisconnected && all.length > steam.length) return all
   return steam.length > 0 ? steam : all
 }
 
 let animationFrameId: number | null = null
 let buttonHandlers: GamepadButtonHandler[] = []
 const previousButtonStates = new Map<number, boolean[]>()
-
-const lastTimestamps = new Map<number, number>()
-const OVERLAY_WINDOW = 180 // ~3s at 60fps
-let lastSteamActiveFrame = -OVERLAY_WINDOW
-let overlaySuppressed = false
-let frameCount = 0
 
 const lastButtonEmitTime = new Map<string, number>()
 const BUTTON_DEDUP_MS = 16
@@ -75,6 +64,9 @@ let gamepadLossTimer: ReturnType<typeof setTimeout> | null = null
 let initialSetupDone = false
 let initialSetupTimer: ReturnType<typeof setTimeout> | null = null
 let systemGamepadsDetected = false
+let xboxRecoveryActive = false
+let xboxRecoveryTimer: ReturnType<typeof setTimeout> | null = null
+const knownIndices = new Set<number>()
 
 function initWindowFocusTracking() {
   if (windowFocusInitialised) return
@@ -112,51 +104,6 @@ function pollGamepads() {
   }
 
   const gamepads = filterGamepads([...navigator.getGamepads()])
-  frameCount++
-
-  // Overlay detection: when polling both Steam virtual and raw devices,
-  // use the Steam virtual controller's timestamp as a canary.
-  // Steam stops updating virtual controllers when the overlay is active.
-  const steamPads = gamepads.filter(gp => isSteamController(gp))
-  const rawPads = gamepads.filter(gp => !isSteamController(gp))
-
-  if (steamPads.length > 0 && rawPads.length > 0) {
-    let steamAdvanced = false
-    for (const gp of steamPads) {
-      const prevTs = lastTimestamps.get(gp.index)
-      if (prevTs !== undefined && gp.timestamp !== prevTs) steamAdvanced = true
-      lastTimestamps.set(gp.index, gp.timestamp)
-    }
-    if (steamAdvanced) lastSteamActiveFrame = frameCount
-
-    const steamRecentlyActive = (frameCount - lastSteamActiveFrame) < OVERLAY_WINDOW
-    const rawActive = rawPads.some(gp => gp.buttons.some(b => b.pressed))
-
-    if (!steamAdvanced && steamRecentlyActive && rawActive && !overlaySuppressed) {
-      overlaySuppressed = true
-      previousButtonStates.clear()
-      buttonHoldState.clear()
-      console.log('[Gamepad] Steam virtual stalled with raw activity – suppressing (likely overlay)')
-    }
-    if (steamAdvanced && overlaySuppressed) {
-      overlaySuppressed = false
-      previousButtonStates.clear()
-      buttonHoldState.clear()
-      console.log('[Gamepad] Steam virtual resumed – unsuppressing')
-    }
-    if (overlaySuppressed) {
-      animationFrameId = requestAnimationFrame(pollGamepads)
-      return
-    }
-  } else {
-    // Only Steam or only raw devices -- update timestamps, no overlay detection needed
-    for (const gp of gamepads) lastTimestamps.set(gp.index, gp.timestamp)
-    if (overlaySuppressed) {
-      overlaySuppressed = false
-      previousButtonStates.clear()
-      buttonHoldState.clear()
-    }
-  }
 
   for (const gamepad of gamepads) {
     const prevStates = previousButtonStates.get(gamepad.index) ?? []
@@ -225,19 +172,20 @@ export function initGamepad(handler: GamepadButtonHandler) {
   }
 
   const api = (window as any).electronAPI
-  if (api?.onSystemGamepads) {
-    api.onSystemGamepads((detected: boolean) => {
-      systemGamepadsDetected = detected
-      if (detected && filterGamepads([...navigator.getGamepads()]).length === 0) {
-        console.log('[Gamepad] System gamepads detected but Gamepad API not yet active')
-        window.dispatchEvent(new CustomEvent('gamepad-activation-needed'))
-      }
-    })
-  }
+  const cleanupSystemGamepads = api?.onSystemGamepads?.((detected: boolean) => {
+    systemGamepadsDetected = detected
+    if (detected && filterGamepads([...navigator.getGamepads()]).length === 0) {
+      console.log('[Gamepad] System gamepads detected but Gamepad API not yet active')
+      window.dispatchEvent(new CustomEvent('gamepad-activation-needed'))
+    }
+  })
+  const cleanupReconnectPrompt = api?.onReconnectPrompt?.(() => {
+    console.log('[Gamepad] Xbox auto-reset failed, prompting user to reconnect')
+    window.dispatchEvent(new CustomEvent('gamepad-reconnect-needed'))
+  })
 
   // NOTE: Chromium may not fire gamepadconnected for already-connected gamepads.
   // Probe and dispatch synthetic events so InputProvider's bootstrap fires.
-  const knownIndices = new Set<number>()
   let startupProbeCount = 0
   const emitForExisting = () => {
     for (const gp of navigator.getGamepads()) {
@@ -257,15 +205,21 @@ export function initGamepad(handler: GamepadButtonHandler) {
   }, 500)
   requestAnimationFrame(emitForExisting)
 
+  const connectTimestamps = new Map<number, number>()
+
   const handleConnect = (e: GamepadEvent) => {
     if (knownIndices.has(e.gamepad.index)) return
     knownIndices.add(e.gamepad.index)
+    connectTimestamps.set(e.gamepad.index, Date.now())
     hadGamepads = true
     if (gamepadLossTimer) { clearTimeout(gamepadLossTimer); gamepadLossTimer = null }
     const isSteam = isSteamController(e.gamepad)
     console.log('[Gamepad] Connected:', e.gamepad.id, 'at index', e.gamepad.index, isSteam ? '(steam)' : '(raw hardware)')
-    if (!isSteam) {
-      console.log('[Gamepad] Non-Steam controller detected; will prefer Steam virtual gamepad if available')
+    if (isSteam) {
+      xboxRecoveryActive = false
+      if (xboxRecoveryTimer) { clearTimeout(xboxRecoveryTimer); xboxRecoveryTimer = null }
+      window.dispatchEvent(new CustomEvent('gamepad-reconnected'))
+      api?.reportSteamConnected?.()
     }
     if (initialSetupDone && !isSteam) {
       emitToast('Controller connected')
@@ -277,10 +231,20 @@ export function initGamepad(handler: GamepadButtonHandler) {
 
   const handleDisconnect = (e: GamepadEvent) => {
     knownIndices.delete(e.gamepad.index)
-    if (isSteamController(e.gamepad)) steamDisconnected = true
+    const connectTime = connectTimestamps.get(e.gamepad.index)
+    connectTimestamps.delete(e.gamepad.index)
+
+    // Detect Xbox ephemeral virtual: Steam controller that lived < 1s
+    if (isSteamController(e.gamepad) && connectTime && (Date.now() - connectTime) < 1000) {
+      console.log('[Gamepad] Steam virtual dropout detected (lived', Date.now() - connectTime, 'ms) — requesting Xbox recovery')
+      xboxRecoveryActive = true
+      if (xboxRecoveryTimer) clearTimeout(xboxRecoveryTimer)
+      xboxRecoveryTimer = setTimeout(() => { xboxRecoveryActive = false }, 30000)
+      api?.reportXboxDropout?.()
+    }
+
     console.log('[Gamepad] Disconnected:', e.gamepad.id, 'at index', e.gamepad.index)
     previousButtonStates.delete(e.gamepad.index)
-    lastTimestamps.delete(e.gamepad.index)
     for (const key of buttonHoldState.keys()) {
       if (key.startsWith(`${e.gamepad.index}-`)) buttonHoldState.delete(key)
     }
@@ -290,7 +254,7 @@ export function initGamepad(handler: GamepadButtonHandler) {
     }
 
     const remaining = navigator.getGamepads().some(gp => gp !== null)
-    if (hadGamepads && !remaining && !restartAttempted) {
+    if (hadGamepads && !remaining && !restartAttempted && !xboxRecoveryActive) {
       console.log('[Gamepad] All gamepads lost – will restart in 3s if none reconnect')
       gamepadLossTimer = setTimeout(() => {
         if (!navigator.getGamepads().some(gp => gp !== null)) {
@@ -308,6 +272,9 @@ export function initGamepad(handler: GamepadButtonHandler) {
 
   return () => {
     clearInterval(startupProbe)
+    if (initialSetupTimer) { clearTimeout(initialSetupTimer); initialSetupTimer = null }
+    cleanupSystemGamepads?.()
+    cleanupReconnectPrompt?.()
     buttonHandlers = buttonHandlers.filter(h => h !== handler)
     if (buttonHandlers.length === 0 && animationFrameId) {
       cancelAnimationFrame(animationFrameId)

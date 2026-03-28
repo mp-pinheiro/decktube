@@ -7,7 +7,8 @@ import { createProxyMiddleware } from 'http-proxy-middleware'
 import express from 'express'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
-import { appendFileSync, readFileSync, writeFileSync } from 'fs'
+import { appendFileSync, readdirSync, readFileSync, writeFileSync } from 'fs'
+import { execSync } from 'child_process'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const isDev = !!process.env.VITE_DEV_SERVER_URL
@@ -233,6 +234,72 @@ async function createWindow() {
       logToFile('Window focused')
       mainWindow.webContents.send('window-focus', true)
     }
+  })
+
+  // Xbox virtual dropout: Steam creates an ephemeral virtual that dies in ~7ms.
+  // Try USB kill or BT disconnect/reconnect. Prompt only if auto-recovery fails.
+  let xboxRecoveryDone = false
+
+  function sendReconnectPrompt() {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      logToFile('[Xbox] Prompting user to reconnect')
+      mainWindow.webContents.send('reconnect-prompt')
+    }
+  }
+
+  ipcMain.on('steam-controller-connected', () => {
+    if (xboxRecoveryDone) {
+      logToFile('[Xbox] Steam controller connected, re-arming recovery for future dropouts')
+      xboxRecoveryDone = false
+    }
+  })
+
+  ipcMain.on('xbox-virtual-dropout', () => {
+    if (xboxRecoveryDone) return
+    xboxRecoveryDone = true
+    logToFile('[Xbox] Ephemeral virtual detected')
+
+    // Try USB kill first
+    const base = '/sys/bus/usb/devices'
+    try {
+      const devs = readdirSync(base)
+      for (const dev of devs) {
+        try {
+          const vendor = readFileSync(`${base}/${dev}/idVendor`, 'utf8').trim()
+          if (vendor === '045e') {
+            logToFile(`[Xbox] Killing USB device at ${base}/${dev}`)
+            writeFileSync(`${base}/${dev}/authorized`, '0')
+            logToFile('[Xbox] USB device powered off')
+            sendReconnectPrompt()
+            return
+          }
+        } catch {}
+      }
+    } catch {}
+
+    // No USB device — try BT disconnect/reconnect
+    try {
+      const btDevices = execSync('bluetoothctl devices', { encoding: 'utf8', timeout: 3000 })
+      logToFile(`[Xbox] BT devices:\n${btDevices.trim()}`)
+      for (const line of btDevices.split('\n')) {
+        if (/xbox/i.test(line)) {
+          const match = line.match(/([0-9A-F]{2}(?::[0-9A-F]{2}){5})/i)
+          if (match) {
+            logToFile(`[Xbox] Disconnecting BT device ${match[1]}`)
+            execSync(`bluetoothctl disconnect ${match[1]}`, { encoding: 'utf8', timeout: 5000 })
+            logToFile('[Xbox] BT disconnected (press Xbox button to reconnect)')
+            sendReconnectPrompt()
+            return
+          }
+        }
+      }
+    } catch (btErr) {
+      logToFile(`[Xbox] BT failed: ${btErr.message}`)
+    }
+
+    // Nothing worked
+    logToFile('[Xbox] No USB or BT Xbox device found')
+    sendReconnectPrompt()
   })
 }
 

@@ -28,4 +28,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('system-gamepads-detected', listener)
     return () => ipcRenderer.removeListener('system-gamepads-detected', listener)
   },
+  reportXboxDropout: () => ipcRenderer.send('xbox-virtual-dropout'),
+  reportSteamConnected: () => ipcRenderer.send('steam-controller-connected'),
+  onReconnectPrompt: (callback) => {
+    const listener = () => callback()
+    ipcRenderer.on('reconnect-prompt', listener)
+    return () => ipcRenderer.removeListener('reconnect-prompt', listener)
+  },
 })

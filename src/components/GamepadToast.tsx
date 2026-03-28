@@ -31,6 +31,8 @@ export default function GamepadToast() {
     return () => window.removeEventListener('gamepad-toast', handler)
   }, [dismiss])
 
+  const [reconnectNeeded, setReconnectNeeded] = useState(false)
+
   useEffect(() => {
     const onNeeded = () => setActivationNeeded(true)
     const onActivated = () => setActivationNeeded(false)
@@ -39,6 +41,25 @@ export default function GamepadToast() {
     return () => {
       window.removeEventListener('gamepad-activation-needed', onNeeded)
       window.removeEventListener('gamepad-activated', onActivated)
+    }
+  }, [])
+
+  useEffect(() => {
+    let dismissTimer: ReturnType<typeof setTimeout> | null = null
+    const onReconnect = () => {
+      setReconnectNeeded(true)
+      dismissTimer = setTimeout(() => setReconnectNeeded(false), 30000)
+    }
+    const onReconnected = () => {
+      setReconnectNeeded(false)
+      if (dismissTimer) { clearTimeout(dismissTimer); dismissTimer = null }
+    }
+    window.addEventListener('gamepad-reconnect-needed', onReconnect)
+    window.addEventListener('gamepad-reconnected', onReconnected)
+    return () => {
+      if (dismissTimer) clearTimeout(dismissTimer)
+      window.removeEventListener('gamepad-reconnect-needed', onReconnect)
+      window.removeEventListener('gamepad-reconnected', onReconnected)
     }
   }, [])
 
@@ -56,6 +77,19 @@ export default function GamepadToast() {
           >
             <Gamepad2 className="w-4 h-4 shrink-0" />
             Controller detected -- press any button to activate
+          </motion.div>
+        )}
+        {reconnectNeeded && (
+          <motion.div
+            key="reconnect"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20, transition: { duration: 0.2 } }}
+            transition={{ duration: 0.15 }}
+            className="flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-sm text-sm font-medium bg-amber-900/80 text-amber-100"
+          >
+            <Gamepad2 className="w-4 h-4 shrink-0" />
+            Xbox detected -- reconnect controller for full support
           </motion.div>
         )}
         {toasts.map(toast => (
