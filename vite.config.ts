@@ -45,6 +45,7 @@ export default defineConfig(({ mode }) => {
             const proxyReq = mod.request(targetUrl, {
               method: req.method || 'GET',
               headers: upstreamHeaders,
+              timeout: 15000,
             }, (proxyRes: IncomingMessage) => {
               const responseHeaders: Record<string, string> = {
                 'Content-Type': proxyRes.headers['content-type'] || 'application/octet-stream',
@@ -68,6 +69,14 @@ export default defineConfig(({ mode }) => {
               if (!res.headersSent) {
                 res.writeHead(502)
                 res.end('Proxy error')
+              }
+            })
+
+            proxyReq.on('timeout', () => {
+              proxyReq.destroy()
+              if (!res.headersSent) {
+                res.writeHead(504)
+                res.end('Upstream timeout')
               }
             })
 

@@ -52,6 +52,8 @@ export default function WatchPage() {
   const [error, setError] = useState<string | null>(null)
   const [paused, setPaused] = useState(true)
   const initTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const midPlaybackErrorRef = useRef(false)
 
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [playAction, setPlayAction] = useState(0)
@@ -151,6 +153,23 @@ export default function WatchPage() {
         }
         setError('Failed to load video stream')
         setLoading(false)
+      } else if (!midPlaybackErrorRef.current) {
+        midPlaybackErrorRef.current = true
+        const currentTime = videoElRef.current?.currentTime ?? 0
+        const src = blobUrlRef.current
+        if (src && currentTime > 0) {
+          try {
+            console.warn('dash.js mid-playback error, attempting source reload at', currentTime)
+            dp.attachSource(src, currentTime)
+          } catch (attachErr) {
+            console.error('dash.js attachSource failed:', attachErr)
+            setError('Video stream lost')
+            setLoading(false)
+          }
+        } else {
+          setError('Failed to load video stream')
+          setLoading(false)
+        }
       }
     })
 
@@ -194,6 +213,7 @@ export default function WatchPage() {
 
     cpnRef.current = generateCpn()
     playbackStartedRef.current = false
+    midPlaybackErrorRef.current = false
 
     let cancelled = false
 
@@ -337,15 +357,60 @@ export default function WatchPage() {
       }
     }
 
+    const clearStallTimer = () => {
+      if (stallTimerRef.current) {
+        clearTimeout(stallTimerRef.current)
+        stallTimerRef.current = null
+      }
+    }
+
+    const onWaiting = () => {
+      setLoading(true)
+      clearStallTimer()
+      stallTimerRef.current = setTimeout(() => {
+        if (video && !video.paused) {
+          video.currentTime = video.currentTime + 0.001
+        }
+      }, 8000)
+    }
+
+    const onStalled = () => {
+      clearStallTimer()
+      stallTimerRef.current = setTimeout(() => {
+        if (video && !video.paused) {
+          video.currentTime = video.currentTime + 0.001
+        }
+      }, 8000)
+    }
+
+    const onCanPlay = () => {
+      clearStallTimer()
+      setLoading(false)
+    }
+
+    const onPlaying = () => {
+      clearStallTimer()
+      setLoading(false)
+    }
+
     video.addEventListener('play', onPlay)
     video.addEventListener('pause', onPause)
     video.addEventListener('ended', onEnded)
     video.addEventListener('seeked', onSeeked)
+    video.addEventListener('waiting', onWaiting)
+    video.addEventListener('stalled', onStalled)
+    video.addEventListener('canplay', onCanPlay)
+    video.addEventListener('playing', onPlaying)
     return () => {
+      clearStallTimer()
       video.removeEventListener('play', onPlay)
       video.removeEventListener('pause', onPause)
       video.removeEventListener('ended', onEnded)
       video.removeEventListener('seeked', onSeeked)
+      video.removeEventListener('waiting', onWaiting)
+      video.removeEventListener('stalled', onStalled)
+      video.removeEventListener('canplay', onCanPlay)
+      video.removeEventListener('playing', onPlaying)
     }
   }, [videoId])
 
@@ -353,7 +418,7 @@ export default function WatchPage() {
     if (!('mediaSession' in navigator)) return
 
     const ms = navigator.mediaSession
-    const playHandler = () => { videoElRef.current?.play() }
+    const playHandler = () => { videoElRef.current?.play().catch(() => {}) }
     const pauseHandler = () => { videoElRef.current?.pause() }
     const nextHandler = () => { if (nextVideoRef.current) navigate(`/watch/${nextVideoRef.current.videoId}`) }
 
@@ -375,7 +440,6 @@ export default function WatchPage() {
       ms.setActionHandler('pause', null)
       ms.setActionHandler('nexttrack', null)
       ms.metadata = null
-      ms.playbackState = 'none'
     }
   }, [videoData, videoId, navigate])
 
