@@ -33,9 +33,26 @@ function filterGamepads(raw: (Gamepad | null)[]): Gamepad[] {
   for (const gp of raw) {
     if (!gp) continue
     all.push(gp)
-    if (isSteamController(gp)) steam.push(gp)
+    if (isSteamController(gp)) {
+      steam.push(gp)
+      if (gp.timestamp > maxSteamTimestamp) maxSteamTimestamp = gp.timestamp
+    }
   }
-  return steam.length > 0 ? steam : all
+  if (steam.length === 0) return all
+
+  // After focus restore, include raw hardware until a Steam virtual proves it's alive.
+  // This handles: after switching to another game and back, the Steam virtual may be stale
+  // (Steam routed it to the other game) while raw hardware still has active input.
+  if (focusGraceActive) {
+    const currentMax = Math.max(...steam.map(gp => gp.timestamp))
+    if (currentMax > steamTimestampAtBlur) {
+      focusGraceActive = false
+      return steam
+    }
+    return all
+  }
+
+  return steam
 }
 
 let animationFrameId: number | null = null
@@ -66,6 +83,10 @@ let initialSetupTimer: ReturnType<typeof setTimeout> | null = null
 let systemGamepadsDetected = false
 let xboxRecoveryActive = false
 let xboxRecoveryTimer: ReturnType<typeof setTimeout> | null = null
+let rearmTimer: ReturnType<typeof setTimeout> | null = null
+let maxSteamTimestamp = 0
+let steamTimestampAtBlur = 0
+let focusGraceActive = false
 const knownIndices = new Set<number>()
 
 function initWindowFocusTracking() {
@@ -78,7 +99,11 @@ function initWindowFocusTracking() {
       if (!focused) {
         previousButtonStates.clear()
         buttonHoldState.clear()
+        steamTimestampAtBlur = maxSteamTimestamp
         console.log('[Gamepad] Window blurred – suppressing input')
+      } else {
+        focusGraceActive = true
+        console.log('[Gamepad] Window focused – raw hardware fallback active until Steam responds')
       }
     })
   }
@@ -216,10 +241,17 @@ export function initGamepad(handler: GamepadButtonHandler) {
     const isSteam = isSteamController(e.gamepad)
     console.log('[Gamepad] Connected:', e.gamepad.id, 'at index', e.gamepad.index, isSteam ? '(steam)' : '(raw hardware)')
     if (isSteam) {
-      xboxRecoveryActive = false
-      if (xboxRecoveryTimer) { clearTimeout(xboxRecoveryTimer); xboxRecoveryTimer = null }
       window.dispatchEvent(new CustomEvent('gamepad-reconnected'))
-      api?.reportSteamConnected?.()
+      if (xboxRecoveryActive) {
+        xboxRecoveryActive = false
+        if (xboxRecoveryTimer) { clearTimeout(xboxRecoveryTimer); xboxRecoveryTimer = null }
+      }
+      // Delay re-arm so transient churn (game launch, Steam reassigning) doesn't re-enable recovery
+      if (rearmTimer) clearTimeout(rearmTimer)
+      rearmTimer = setTimeout(() => {
+        rearmTimer = null
+        api?.reportSteamConnected?.()
+      }, 5000)
     }
     if (initialSetupDone && !isSteam) {
       emitToast('Controller connected')
@@ -234,8 +266,15 @@ export function initGamepad(handler: GamepadButtonHandler) {
     const connectTime = connectTimestamps.get(e.gamepad.index)
     connectTimestamps.delete(e.gamepad.index)
 
+    // Cancel pending re-arm if a Steam controller disconnects — it wasn't stable
+    if (isSteamController(e.gamepad) && rearmTimer) {
+      clearTimeout(rearmTimer)
+      rearmTimer = null
+    }
+
     // Detect Xbox ephemeral virtual: Steam controller that lived < 1s
-    if (isSteamController(e.gamepad) && connectTime && (Date.now() - connectTime) < 1000) {
+    // Only trigger when focused — background churn from Steam reassigning virtuals to another game is expected
+    if (windowFocused && isSteamController(e.gamepad) && connectTime && (Date.now() - connectTime) < 1000) {
       console.log('[Gamepad] Steam virtual dropout detected (lived', Date.now() - connectTime, 'ms) — requesting Xbox recovery')
       xboxRecoveryActive = true
       if (xboxRecoveryTimer) clearTimeout(xboxRecoveryTimer)
@@ -255,15 +294,19 @@ export function initGamepad(handler: GamepadButtonHandler) {
 
     const remaining = navigator.getGamepads().some(gp => gp !== null)
     if (hadGamepads && !remaining && !restartAttempted && !xboxRecoveryActive) {
-      console.log('[Gamepad] All gamepads lost – will restart in 3s if none reconnect')
+      console.log('[Gamepad] All gamepads lost – will restart in 15s if none reconnect')
       gamepadLossTimer = setTimeout(() => {
         if (!navigator.getGamepads().some(gp => gp !== null)) {
-          console.log('[Gamepad] Restarting app to recover gamepad')
-          restartAttempted = true
-          emitToast('Reconnecting controller — restarting...', 'warning')
-          setTimeout(() => window.electronAPI?.restartApp(), 2000)
+          emitToast('No controller detected — restarting in 10s...', 'warning')
+          gamepadLossTimer = setTimeout(() => {
+            if (!navigator.getGamepads().some(gp => gp !== null)) {
+              console.log('[Gamepad] Restarting app to recover gamepad')
+              restartAttempted = true
+              window.electronAPI?.restartApp()
+            }
+          }, 10000)
         }
-      }, 3000)
+      }, 5000)
     }
   }
 
@@ -273,6 +316,7 @@ export function initGamepad(handler: GamepadButtonHandler) {
   return () => {
     clearInterval(startupProbe)
     if (initialSetupTimer) { clearTimeout(initialSetupTimer); initialSetupTimer = null }
+    if (rearmTimer) { clearTimeout(rearmTimer); rearmTimer = null }
     cleanupSystemGamepads?.()
     cleanupReconnectPrompt?.()
     buttonHandlers = buttonHandlers.filter(h => h !== handler)
@@ -284,6 +328,7 @@ export function initGamepad(handler: GamepadButtonHandler) {
     }
     window.removeEventListener('gamepadconnected', handleConnect)
     window.removeEventListener('gamepaddisconnected', handleDisconnect)
+    knownIndices.clear()
   }
 }
 

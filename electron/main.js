@@ -7,8 +7,18 @@ import { createProxyMiddleware } from 'http-proxy-middleware'
 import express from 'express'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
-import { appendFileSync, readdirSync, readFileSync, writeFileSync } from 'fs'
-import { execSync } from 'child_process'
+import { appendFileSync, readFileSync, writeFileSync } from 'fs'
+import { promises as fsPromises } from 'fs'
+import { execFile } from 'child_process'
+
+function execFileAsync(cmd, args, options) {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, options, (err, stdout) => {
+      if (err) reject(err)
+      else resolve(stdout)
+    })
+  })
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const isDev = !!process.env.VITE_DEV_SERVER_URL
@@ -97,6 +107,7 @@ function createProxiedServer() {
     const proxyReq = mod.request(targetUrl, {
       method: req.method || 'GET',
       headers: upstreamHeaders,
+      timeout: 15000,
     }, (proxyRes) => {
       const responseHeaders = {
         'Content-Type': proxyRes.headers['content-type'] || 'application/octet-stream',
@@ -120,6 +131,14 @@ function createProxiedServer() {
       if (!res.headersSent) {
         res.writeHead(502)
         res.end('Proxy error')
+      }
+    })
+
+    proxyReq.on('timeout', () => {
+      proxyReq.destroy()
+      if (!res.headersSent) {
+        res.writeHead(504)
+        res.end('Upstream timeout')
       }
     })
 
@@ -254,52 +273,61 @@ async function createWindow() {
     }
   })
 
-  ipcMain.on('xbox-virtual-dropout', () => {
+  ipcMain.on('xbox-virtual-dropout', async () => {
     if (xboxRecoveryDone) return
+    if (mainWindow && !mainWindow.isFocused()) {
+      logToFile('[Xbox] Ignoring dropout — window not focused')
+      return
+    }
     xboxRecoveryDone = true
     logToFile('[Xbox] Ephemeral virtual detected')
 
-    // Try USB kill first
-    const base = '/sys/bus/usb/devices'
     try {
-      const devs = readdirSync(base)
-      for (const dev of devs) {
-        try {
-          const vendor = readFileSync(`${base}/${dev}/idVendor`, 'utf8').trim()
-          if (vendor === '045e') {
-            logToFile(`[Xbox] Killing USB device at ${base}/${dev}`)
-            writeFileSync(`${base}/${dev}/authorized`, '0')
-            logToFile('[Xbox] USB device powered off')
-            sendReconnectPrompt()
-            return
-          }
-        } catch {}
-      }
-    } catch {}
+      // Try USB kill first
+      const base = '/sys/bus/usb/devices'
+      try {
+        const devs = await fsPromises.readdir(base)
+        for (const dev of devs) {
+          try {
+            const vendor = (await fsPromises.readFile(`${base}/${dev}/idVendor`, 'utf8')).trim()
+            if (vendor === '045e') {
+              logToFile(`[Xbox] Killing USB device at ${base}/${dev}`)
+              await fsPromises.writeFile(`${base}/${dev}/authorized`, '0')
+              logToFile('[Xbox] USB device powered off')
+              sendReconnectPrompt()
+              return
+            }
+          } catch {}
+        }
+      } catch {}
 
-    // No USB device — try BT disconnect/reconnect
-    try {
-      const btDevices = execSync('bluetoothctl devices', { encoding: 'utf8', timeout: 3000 })
-      logToFile(`[Xbox] BT devices:\n${btDevices.trim()}`)
-      for (const line of btDevices.split('\n')) {
-        if (/xbox/i.test(line)) {
-          const match = line.match(/([0-9A-F]{2}(?::[0-9A-F]{2}){5})/i)
-          if (match) {
-            logToFile(`[Xbox] Disconnecting BT device ${match[1]}`)
-            execSync(`bluetoothctl disconnect ${match[1]}`, { encoding: 'utf8', timeout: 5000 })
-            logToFile('[Xbox] BT disconnected (press Xbox button to reconnect)')
-            sendReconnectPrompt()
-            return
+      // No USB device — try BT disconnect
+      try {
+        const btDevices = await execFileAsync('bluetoothctl', ['devices'], { encoding: 'utf8', timeout: 3000 })
+        logToFile(`[Xbox] BT devices:\n${btDevices.trim()}`)
+        for (const line of btDevices.split('\n')) {
+          if (/xbox/i.test(line)) {
+            const match = line.match(/([0-9A-F]{2}(?::[0-9A-F]{2}){5})/i)
+            if (match) {
+              logToFile(`[Xbox] Disconnecting BT device ${match[1]}`)
+              await execFileAsync('bluetoothctl', ['disconnect', match[1]], { encoding: 'utf8', timeout: 5000 })
+              logToFile('[Xbox] BT disconnected (press Xbox button to reconnect)')
+              sendReconnectPrompt()
+              return
+            }
           }
         }
+      } catch (btErr) {
+        logToFile(`[Xbox] BT failed: ${btErr.message}`)
       }
-    } catch (btErr) {
-      logToFile(`[Xbox] BT failed: ${btErr.message}`)
-    }
 
-    // Nothing worked
-    logToFile('[Xbox] No USB or BT Xbox device found')
-    sendReconnectPrompt()
+      // Nothing worked
+      logToFile('[Xbox] No USB or BT Xbox device found')
+      sendReconnectPrompt()
+    } catch (err) {
+      logToFile(`[Xbox] Recovery failed: ${err.message}`)
+      sendReconnectPrompt()
+    }
   })
 }
 
