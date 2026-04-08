@@ -498,8 +498,10 @@ async function youtubeiRequest<T>(endpoint: string, body: YouTubeiRequest, useTv
   if (!response.ok) {
     const text = await response.text().catch(() => 'Unknown error')
     if (response.status === 401 || (response.status === 403 && isInsufficientScopeError(text))) {
-      forceReauth()
-      throw new Error('Session expired - please sign in again')
+      if (forceReauth()) {
+        throw new Error('Session expired - please sign in again')
+      }
+      throw new Error(`YouTube rejected the granted scopes. Try signing out and in again. Details: ${text}`)
     }
     throw new Error(`YouTube API error: ${response.status} ${response.statusText} - ${text}`)
   }

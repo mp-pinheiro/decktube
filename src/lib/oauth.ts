@@ -3,7 +3,7 @@ import { signOutFirebase } from './firebase'
 const OAUTH_CONFIG = {
   clientId: import.meta.env.VITE_YOUTUBE_CLIENT_ID || '',
   clientSecret: import.meta.env.VITE_YOUTUBE_CLIENT_SECRET || '',
-  scope: 'openid http://gdata.youtube.com https://www.googleapis.com/auth/youtube https://www.googleapis.com/auth/youtube-paid-content',
+  scope: 'openid http://gdata.youtube.com https://www.googleapis.com/auth/youtube-paid-content',
   deviceCodeUrl: '/oauth/device/code',
   tokenUrl: '/token',
 }
@@ -18,7 +18,10 @@ const STORAGE_KEYS = {
   EXPIRES_IN: 'yt_device_expires_in',
   INTERVAL: 'yt_device_interval',
   ID_TOKEN: 'yt_id_token',
+  LAST_SIGNIN_AT: 'yt_last_signin_at',
 }
+
+const REAUTH_LOOP_WINDOW_MS = 60_000
 
 export interface DeviceCodeResponse {
   device_code: string
@@ -110,6 +113,7 @@ export async function pollForToken(
 
       if (response.ok && data.access_token) {
         storeToken(data as TokenResponse)
+        localStorage.setItem(STORAGE_KEYS.LAST_SIGNIN_AT, Date.now().toString())
         onTokenReceived(data.access_token)
         clearDeviceCode()
       } else if (data.error === 'authorization_pending') {
@@ -211,6 +215,7 @@ export function logout(): void {
   localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN)
   localStorage.removeItem(STORAGE_KEYS.TOKEN_EXPIRES_AT)
   localStorage.removeItem(STORAGE_KEYS.ID_TOKEN)
+  localStorage.removeItem(STORAGE_KEYS.LAST_SIGNIN_AT)
   signOutFirebase().catch(() => {})
   clearDeviceCode()
 }
@@ -225,11 +230,25 @@ export function isInsufficientScopeError(message: string): boolean {
 
 let reauthInFlight = false
 
-export function forceReauth(): void {
-  if (reauthInFlight) return
+/**
+ * Returns true if a redirect was issued. Returns false if the caller just
+ * signed in within REAUTH_LOOP_WINDOW_MS — in that case the fresh token
+ * itself lacks the required scopes, so bouncing them to /login again would
+ * loop forever and the caller should surface the error instead.
+ */
+export function forceReauth(): boolean {
+  if (reauthInFlight) return true
+  const lastSignInStr = localStorage.getItem(STORAGE_KEYS.LAST_SIGNIN_AT)
+  if (lastSignInStr) {
+    const lastSignIn = parseInt(lastSignInStr, 10)
+    if (Number.isFinite(lastSignIn) && Date.now() - lastSignIn < REAUTH_LOOP_WINDOW_MS) {
+      return false
+    }
+  }
   reauthInFlight = true
   logout()
   if (typeof window !== 'undefined' && !window.location.pathname.endsWith('/login')) {
     window.location.replace('/login')
   }
+  return true
 }
