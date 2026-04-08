@@ -3,7 +3,7 @@ import { signOutFirebase } from './firebase'
 const OAUTH_CONFIG = {
   clientId: import.meta.env.VITE_YOUTUBE_CLIENT_ID || '',
   clientSecret: import.meta.env.VITE_YOUTUBE_CLIENT_SECRET || '',
-  scope: 'openid http://gdata.youtube.com https://www.googleapis.com/auth/youtube',
+  scope: 'openid http://gdata.youtube.com https://www.googleapis.com/auth/youtube https://www.googleapis.com/auth/youtube-paid-content',
   deviceCodeUrl: '/oauth/device/code',
   tokenUrl: '/token',
 }
@@ -217,4 +217,19 @@ export function logout(): void {
 
 export function isAuthenticated(): boolean {
   return !!localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN)
+}
+
+export function isInsufficientScopeError(message: string): boolean {
+  return /insufficient.*scope|missing.*scope|ACCESS_TOKEN_SCOPE_INSUFFICIENT/i.test(message)
+}
+
+let reauthInFlight = false
+
+export function forceReauth(): void {
+  if (reauthInFlight) return
+  reauthInFlight = true
+  logout()
+  if (typeof window !== 'undefined' && !window.location.pathname.endsWith('/login')) {
+    window.location.replace('/login')
+  }
 }

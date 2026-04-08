@@ -1,6 +1,6 @@
 const API_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8'
 
-import { getToken } from './oauth'
+import { getToken, isInsufficientScopeError, forceReauth } from './oauth'
 
 const CLIENT_CONFIG = {
   clientName: 'WEB',
@@ -497,6 +497,10 @@ async function youtubeiRequest<T>(endpoint: string, body: YouTubeiRequest, useTv
 
   if (!response.ok) {
     const text = await response.text().catch(() => 'Unknown error')
+    if (response.status === 401 || (response.status === 403 && isInsufficientScopeError(text))) {
+      forceReauth()
+      throw new Error('Session expired - please sign in again')
+    }
     throw new Error(`YouTube API error: ${response.status} ${response.statusText} - ${text}`)
   }
 
