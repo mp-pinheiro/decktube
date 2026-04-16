@@ -3,7 +3,7 @@ import { signOutFirebase } from './firebase'
 const OAUTH_CONFIG = {
   clientId: import.meta.env.VITE_YOUTUBE_CLIENT_ID || '',
   clientSecret: import.meta.env.VITE_YOUTUBE_CLIENT_SECRET || '',
-  scope: 'openid http://gdata.youtube.com https://www.googleapis.com/auth/youtube-paid-content',
+  scope: 'openid http://gdata.youtube.com https://www.googleapis.com/auth/youtube',
   deviceCodeUrl: '/oauth/device/code',
   tokenUrl: '/token',
 }
