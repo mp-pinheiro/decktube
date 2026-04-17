@@ -31,7 +31,7 @@ export default function VirtualKeyboard() {
 
   const keyboardRef = useRef<SimpleKeyboard | null>(null)
   const searchTextRef = useRef(searchText)
-  searchTextRef.current = searchText
+  useEffect(() => { searchTextRef.current = searchText }, [searchText])
 
   const syncInput = useCallback((text: string) => {
     setSearchText(text)

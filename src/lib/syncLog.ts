@@ -23,7 +23,9 @@ export function syncLog(level: SyncLogEntry['level'], msg: string, detail?: stri
     entries.splice(0, Math.floor(entries.length / 2))
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(entries))
-    } catch {}
+    } catch {
+      // Still full after trimming — give up silently
+    }
   }
 }
 

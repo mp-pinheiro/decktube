@@ -1,12 +1,11 @@
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import HelpButton from '../components/HelpButton'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { MediaPlayer, type MediaPlayerClass, type Representation } from 'dashjs'
 import { getVideoDetails, getPlayerData, generateMpd, getRelatedVideos, type YouTubeVideo, type MuxedFormat, generateCpn, reportPlaybackStart, reportWatchtime } from '../lib/youtube'
 import { savePlaybackPosition, getPlaybackPosition, clearPlaybackPosition } from '../lib/playbackStore'
 import { markWatched } from '../lib/watchedStore'
 import { getPreferences, setVolume as persistVolume, setQuality as persistQuality, setSponsorBlock as persistSponsorBlock } from '../lib/preferencesStore'
-import { useInputContext } from '../contexts/InputProvider'
+import { useInputContext } from '../contexts/InputContext'
 import QualitySelector, { type QualityOption } from '../components/QualitySelector'
 import PlayerOverlay from '../components/PlayerOverlay'
 import AutoPlayOverlay from '../components/AutoPlayOverlay'
@@ -18,6 +17,13 @@ function heightToLabel(height: number): string {
   if (height >= 2160) return '4K'
   return `${height}p`
 }
+
+const SEEK_TIERS = [
+  { holdMs: 5000, seekSec: 300 },
+  { holdMs: 3000, seekSec: 120 },
+  { holdMs: 2000, seekSec: 60 },
+  { holdMs: 0, seekSec: 10 },
+]
 
 function buildQualityOptions(representations: Representation[]): QualityOption[] {
   const sorted = [...representations].sort((a, b) => b.height - a.height)
@@ -36,12 +42,18 @@ export default function WatchPage() {
   const navigate = useNavigate()
   const videoElRef = useRef<HTMLVideoElement>(null)
   const dashPlayerRef = useRef<MediaPlayerClass | null>(null)
+  const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null)
+  const [dashPlayer, setDashPlayer] = useState<MediaPlayerClass | null>(null)
+  const videoRefCallback = useCallback((el: HTMLVideoElement | null) => {
+    videoElRef.current = el
+    setVideoEl(el)
+  }, [])
   const blobUrlRef = useRef<string | null>(null)
   const { registerActions, unregisterActions } = useInputContext()
 
   const [volume, setVolumeState] = useState(() => getPreferences().volume)
   const volumeRef = useRef(volume)
-  volumeRef.current = volume
+  useEffect(() => { volumeRef.current = volume }, [volume])
   const preferredQuality = useRef(getPreferences().quality)
 
   const [videoData, setVideoData] = useState<YouTubeVideo | null>(null)
@@ -69,7 +81,7 @@ export default function WatchPage() {
   const sbSegmentsRef = useRef<SponsorSegment[]>([])
   const [sponsorBlockEnabled, setSponsorBlockEnabled] = useState(() => getPreferences().sponsorBlockEnabled)
   const sponsorBlockEnabledRef = useRef(sponsorBlockEnabled)
-  sponsorBlockEnabledRef.current = sponsorBlockEnabled
+  useEffect(() => { sponsorBlockEnabledRef.current = sponsorBlockEnabled }, [sponsorBlockEnabled])
   const lastSkippedRef = useRef<string | null>(null)
   const [sponsorSkipAction, setSponsorSkipAction] = useState(0)
   const [sponsorSkipLabel, setSponsorSkipLabel] = useState('')
@@ -88,6 +100,7 @@ export default function WatchPage() {
     if (dashPlayerRef.current) {
       dashPlayerRef.current.destroy()
       dashPlayerRef.current = null
+      setDashPlayer(null)
     }
     if (blobUrlRef.current) {
       URL.revokeObjectURL(blobUrlRef.current)
@@ -115,6 +128,7 @@ export default function WatchPage() {
         setLoading(false)
         dp.destroy()
         dashPlayerRef.current = null
+        setDashPlayer(null)
       }
     }, 30000)
 
@@ -144,7 +158,7 @@ export default function WatchPage() {
       setLoading(false)
     })
 
-    dp.on('error', (e: any) => {
+    dp.on('error', (e: unknown) => {
       console.error('dash.js error:', e)
       if (!dp.isReady()) {
         if (initTimerRef.current) {
@@ -174,6 +188,7 @@ export default function WatchPage() {
     })
 
     dashPlayerRef.current = dp
+    setDashPlayer(dp)
   }, [])
 
   const initProgressive = useCallback((format: MuxedFormat, vid: string) => {
@@ -201,12 +216,15 @@ export default function WatchPage() {
   useEffect(() => {
     if (!videoId) return
 
+    // Reset per-video state before fetching. This is the standard "derived-from-prop reset" pattern.
+    /* eslint-disable react-hooks/set-state-in-effect */
     setLoading(true)
     setError(null)
     setDashQualities([])
     setCurrentQuality('auto')
     setAutoPlayVisible(false)
     setSponsorSegments([])
+    /* eslint-enable react-hooks/set-state-in-effect */
     sbSegmentsRef.current = []
     lastSkippedRef.current = null
     destroyDash()
@@ -309,6 +327,8 @@ export default function WatchPage() {
   useEffect(() => {
     if (!videoId) return
     let cancelled = false
+    // Reset next-video for the new videoId before fetching related list.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setNextVideo(null)
     getRelatedVideos(videoId).then(videos => {
       if (!cancelled && videos.length > 0) setNextVideo(videos[0])
@@ -484,13 +504,6 @@ export default function WatchPage() {
     }
   }, [])
 
-  const SEEK_TIERS = [
-    { holdMs: 5000, seekSec: 300 },
-    { holdMs: 3000, seekSec: 120 },
-    { holdMs: 2000, seekSec: 60 },
-    { holdMs: 0, seekSec: 10 },
-  ]
-
   const seekHoldStartRef = useRef(0)
 
   const seek = useCallback((direction: number, isRepeat = false) => {
@@ -656,7 +669,7 @@ export default function WatchPage() {
         }`}
       >
         <video
-          ref={videoElRef}
+          ref={videoRefCallback}
           className="w-full h-full object-contain"
         />
         <PlayerOverlay
@@ -671,8 +684,8 @@ export default function WatchPage() {
           sponsorSkipAction={sponsorSkipAction}
           sponsorSkipLabel={sponsorSkipLabel}
           sponsorSegments={sponsorBlockEnabled ? sponsorSegments : []}
-          videoEl={videoElRef.current}
-          dashPlayer={dashPlayerRef.current}
+          videoEl={videoEl}
+          dashPlayer={dashPlayer}
         />
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center text-zinc-400">
@@ -738,9 +751,6 @@ export default function WatchPage() {
               </div>
             </>
           )}
-        </div>
-        <div className="shrink-0 flex items-center gap-2">
-          <HelpButton inline />
         </div>
       </div>
     </div>

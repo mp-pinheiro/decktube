@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { search, searchContinuation, type YouTubeSearchResult } from '../lib/youtube'
-import { useInputContext } from '../contexts/InputProvider'
+import { useInputContext } from '../contexts/InputContext'
 import PagedVideoGrid from '../components/PagedVideoGrid'
 import TabBar from '../components/TabBar'
 

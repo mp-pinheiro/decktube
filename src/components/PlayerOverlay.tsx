@@ -1,4 +1,3 @@
-import { useState, useEffect, useRef } from 'react'
 import type { MediaPlayerClass } from 'dashjs'
 import PlayPauseIndicator from './overlay/PlayPauseIndicator'
 import SeekIndicator from './overlay/SeekIndicator'
@@ -6,21 +5,6 @@ import VolumeIndicator from './overlay/VolumeIndicator'
 import QualityIndicator from './overlay/QualityIndicator'
 import SponsorSkipIndicator from './overlay/SponsorSkipIndicator'
 import type { SponsorSegment } from '../lib/sponsorblock'
-
-export function useAutoFade(trigger: number, durationMs: number): boolean {
-  const [visible, setVisible] = useState(false)
-  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
-
-  useEffect(() => {
-    if (trigger === 0) return
-    setVisible(true)
-    clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => setVisible(false), durationMs)
-    return () => clearTimeout(timerRef.current)
-  }, [trigger, durationMs])
-
-  return visible
-}
 
 interface PlayerOverlayProps {
   playAction: number

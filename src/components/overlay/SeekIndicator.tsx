@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import type { MediaPlayerClass } from 'dashjs'
-import { useAutoFade } from '../PlayerOverlay'
+import { useAutoFade } from '../../hooks/useAutoFade'
 import type { SponsorSegment } from '../../lib/sponsorblock'
 
 interface SeekIndicatorProps {
@@ -39,29 +39,26 @@ export default function SeekIndicator({ trigger, seekDelta, videoEl, dashPlayer,
     return () => document.removeEventListener('fullscreenchange', onChange)
   }, [])
 
-  const updateProgress = useCallback(() => {
-    if (!videoEl) return
-
-    const dur = dashPlayer?.isReady() ? dashPlayer.duration() : 0
-    const cur = dashPlayer?.isReady() ? dashPlayer.time() : videoEl.currentTime || 0
-    const safeDur = isFinite(dur) && dur > 0 ? dur : 0
-
-    setDuration(safeDur)
-    setCurrentTime(cur)
-    setProgress(safeDur > 0 ? cur / safeDur : 0)
-
-    if (videoEl.buffered.length > 0) {
-      const end = videoEl.buffered.end(videoEl.buffered.length - 1)
-      setBuffered(safeDur > 0 ? end / safeDur : 0)
-    }
-    rafRef.current = requestAnimationFrame(updateProgress)
-  }, [videoEl, dashPlayer])
-
   useEffect(() => {
     if (!videoEl) return
-    rafRef.current = requestAnimationFrame(updateProgress)
+    const tick = () => {
+      const dur = dashPlayer?.isReady() ? dashPlayer.duration() : 0
+      const cur = dashPlayer?.isReady() ? dashPlayer.time() : videoEl.currentTime || 0
+      const safeDur = isFinite(dur) && dur > 0 ? dur : 0
+
+      setDuration(safeDur)
+      setCurrentTime(cur)
+      setProgress(safeDur > 0 ? cur / safeDur : 0)
+
+      if (videoEl.buffered.length > 0) {
+        const end = videoEl.buffered.end(videoEl.buffered.length - 1)
+        setBuffered(safeDur > 0 ? end / safeDur : 0)
+      }
+      rafRef.current = requestAnimationFrame(tick)
+    }
+    rafRef.current = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(rafRef.current)
-  }, [videoEl, updateProgress])
+  }, [videoEl, dashPlayer])
 
   const deltaLabel = seekDelta > 0 ? `+${seekDelta}s` : `${seekDelta}s`
 

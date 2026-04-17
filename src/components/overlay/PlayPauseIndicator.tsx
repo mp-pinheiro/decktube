@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { Play, Pause } from 'lucide-react'
-import { useAutoFade } from '../PlayerOverlay'
+import { useAutoFade } from '../../hooks/useAutoFade'
 
 interface PlayPauseIndicatorProps {
   trigger: number

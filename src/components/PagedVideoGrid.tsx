@@ -37,11 +37,11 @@ export default function PagedVideoGrid({
   const [pageIndex, setPageIndex] = useState(initialPageIndex ?? 0)
 
   const pageIndexRef = useRef(pageIndex)
-  pageIndexRef.current = pageIndex
   const videosRef = useRef(videos)
-  videosRef.current = videos
   const continuationRef = useRef(continuation)
-  continuationRef.current = continuation
+  useEffect(() => { pageIndexRef.current = pageIndex }, [pageIndex])
+  useEffect(() => { videosRef.current = videos }, [videos])
+  useEffect(() => { continuationRef.current = continuation }, [continuation])
   const pendingFocusIndex = useRef<number | null>(null)
   const initialFocusApplied = useRef(false)
   const gridRef = useRef<HTMLDivElement>(null)

@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { useAutoFade } from '../PlayerOverlay'
+import { useAutoFade } from '../../hooks/useAutoFade'
 
 interface SponsorSkipIndicatorProps {
   trigger: number

@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { Volume2, Volume1, VolumeX } from 'lucide-react'
-import { useAutoFade } from '../PlayerOverlay'
+import { useAutoFade } from '../../hooks/useAutoFade'
 
 interface VolumeIndicatorProps {
   trigger: number

@@ -1,3 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any --
+ * This file parses YouTube's innertube JSON (youtubei/v1). The response shape
+ * is undocumented, deeply nested, and varies by client/context/version. Attempting
+ * to statically type it is a losing battle — we navigate via optional chains and
+ * validate at access time. `any` is intentional here.
+ */
 const API_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8'
 
 import { getToken, isInsufficientScopeError, forceReauth } from './oauth'
