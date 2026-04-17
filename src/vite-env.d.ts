@@ -14,7 +14,12 @@ interface ElectronAPI {
   installUpdate: () => Promise<void>
   openReleasesPage: () => Promise<void>
   restartApp: () => Promise<void>
+  exitApp: () => Promise<void>
   onWindowFocus: (callback: (focused: boolean) => void) => () => void
+  onSystemGamepads: (callback: (detected: boolean) => void) => () => void
+  onReconnectPrompt: (callback: () => void) => () => void
+  reportXboxDropout: () => void
+  reportSteamConnected: () => void
 }
 
 declare global {

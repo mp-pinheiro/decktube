@@ -1,18 +1,12 @@
 import { Link, useLocation } from 'react-router-dom'
-import { routes } from '../routes'
-import { isAuthenticated, logout } from '../lib/oauth'
+import { routes } from '../routePaths'
 import { Search, PlaySquare } from 'lucide-react'
 import { useInputContext } from '../contexts/InputContext'
+import SettingsButton from './SettingsButton'
 
 export default function Header() {
-  const authenticated = isAuthenticated()
   const { searchText, openVirtualKeyboard } = useInputContext()
   const location = useLocation()
-
-  const handleLogout = () => {
-    logout()
-    window.location.href = routes.home
-  }
 
   const handleLogoClick = (e: React.MouseEvent) => {
     if (location.pathname === routes.home) {
@@ -51,25 +45,8 @@ export default function Header() {
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
-        {authenticated ? (
-          <>
-            <span className="text-xs text-zinc-600 select-none leading-none">v{__APP_VERSION__}</span>
-            <button
-              onClick={handleLogout}
-              className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-white/10 rounded-full text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
-            >
-              Sign out
-            </button>
-          </>
-        ) : (
-          <Link
-            to={routes.login}
-            className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-full text-sm font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
-          >
-            Sign in
-          </Link>
-        )}
+      <div className="flex items-center gap-2">
+        <SettingsButton />
       </div>
     </header>
   )

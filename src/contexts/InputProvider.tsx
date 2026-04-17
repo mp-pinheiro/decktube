@@ -203,6 +203,11 @@ export function InputProvider({ children }: InputProviderProps) {
     const cleanupGamepad = initGamepad((button, pressed, isRepeat) => {
       if (!pressed) return
 
+      if (button === 'LOCK_TOGGLE') {
+        window.dispatchEvent(new CustomEvent('input-lock-toggle'))
+        return
+      }
+
       if (virtualKeyboardOpenRef.current) {
         switch (button) {
           case 'A':
@@ -294,5 +299,3 @@ export function InputProvider({ children }: InputProviderProps) {
     </InputContext.Provider>
   )
 }
-
-export { useInputContext } from './InputContext'

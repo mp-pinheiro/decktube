@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   installUpdate: () => ipcRenderer.invoke('update-install'),
   openReleasesPage: () => ipcRenderer.invoke('open-releases-page'),
   restartApp: () => ipcRenderer.invoke('app-restart'),
+  exitApp: () => ipcRenderer.invoke('app-exit'),
   onWindowFocus: (callback) => {
     const listener = (_event, focused) => callback(focused)
     ipcRenderer.on('window-focus', listener)

@@ -51,9 +51,9 @@ export default function LoginPage() {
     setVerificationUrl('')
   }, [])
 
-  const handleBack = useCallback(() => {
-    navigate('/')
-  }, [navigate])
+  const handleExit = useCallback(() => {
+    window.electronAPI?.exitApp()
+  }, [])
 
   return (
     <div className="flex items-center justify-center py-20">
@@ -87,10 +87,10 @@ export default function LoginPage() {
               </button>
 
               <button
-                onClick={handleBack}
-                className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 border border-white/10 rounded-xl text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
+                onClick={handleExit}
+                className="w-full py-3 bg-zinc-800 hover:bg-red-900/40 border border-white/10 hover:border-red-700/50 rounded-xl text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
               >
-                Back to Home
+                Exit
               </button>
             </div>
           ) : (

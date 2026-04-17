@@ -2,9 +2,9 @@ import { lazy, Suspense, Component, useEffect, type ReactNode } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import Header from './Header'
 import { InputProvider } from '../contexts/InputProvider'
-import HelpButton from './HelpButton'
 import VirtualKeyboard from './VirtualKeyboard'
 import GamepadToast from './GamepadToast'
+import InputLock from './InputLock'
 import { isAuthenticated } from '../lib/oauth'
 import { initSync } from '../lib/firestoreSync'
 
@@ -21,7 +21,6 @@ class UpdateBannerErrorBoundary extends Component<
 
 export default function Layout() {
   const location = useLocation()
-  const isWatchPage = location.pathname.startsWith('/watch/')
 
   useEffect(() => {
     if (isAuthenticated()) {
@@ -48,10 +47,10 @@ export default function Layout() {
             <Outlet />
           </main>
         </div>
-        {!isWatchPage && <HelpButton />}
       </div>
       <VirtualKeyboard />
       <GamepadToast />
+      <InputLock />
       <UpdateBannerErrorBoundary>
         <Suspense fallback={null}>
           <LazyUpdateBanner />

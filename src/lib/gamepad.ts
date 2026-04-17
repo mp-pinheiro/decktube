@@ -1,3 +1,5 @@
+import { getInputMode } from './inputModeStore'
+
 const GAMEPAD_BUTTONS = {
   A: 0,
   B: 1,
@@ -16,6 +18,26 @@ const GAMEPAD_BUTTONS = {
 } as const
 
 type GamepadButtonHandler = (button: string, pressed: boolean, isRepeat?: boolean) => void
+
+// Mode is read once at module load — switching requires app restart.
+const inputMode = getInputMode()
+
+let lockActive = false
+export function setGamepadLockActive(active: boolean) { lockActive = active }
+
+// Lock is triggered by holding LB + RB for LOCK_HOLD_MS.
+// While the combo is held, individual LB/RB events are suppressed so pressing both
+// doesn't also fire fullscreen and nextTab. Progress events drive the UI indicator.
+const LOCK_HOLD_MS = 3000
+const lockHoldStart = new Map<number, number>()
+const lockHoldEmitted = new Set<number>()
+let lockProgress = 0
+
+function dispatchLockProgress(progress: number) {
+  if (progress === lockProgress) return
+  lockProgress = progress
+  window.dispatchEvent(new CustomEvent('input-lock-progress', { detail: { progress } }))
+}
 
 function emitToast(message: string, type: 'info' | 'warning' = 'info') {
   console.log('[Gamepad] Toast:', message)
@@ -38,6 +60,11 @@ function filterGamepads(raw: (Gamepad | null)[]): Gamepad[] {
       if (gp.timestamp > maxSteamTimestamp) maxSteamTimestamp = gp.timestamp
     }
   }
+
+  // Lax mode: always poll everything including raw hardware. User is expected to
+  // engage the input lock (Select → LB+RB) before opening the Steam overlay.
+  if (inputMode === 'lax') return all
+
   if (steam.length === 0) return all
 
   // After focus restore, include raw hardware until a Steam virtual proves it's alive.
@@ -92,7 +119,7 @@ const knownIndices = new Set<number>()
 function initWindowFocusTracking() {
   if (windowFocusInitialised) return
   windowFocusInitialised = true
-  const api = (window as any).electronAPI
+  const api = window.electronAPI
   if (api?.onWindowFocus) {
     api.onWindowFocus((focused: boolean) => {
       windowFocused = focused
@@ -130,16 +157,56 @@ function pollGamepads() {
 
   const gamepads = filterGamepads([...navigator.getGamepads()])
 
+  let anyHoldActive = false
+
   for (const gamepad of gamepads) {
     const prevStates = previousButtonStates.get(gamepad.index) ?? []
 
+    // Hold-LB+RB-for-3s → toggle lock. Runs regardless of lockActive so unlock works.
+    const lbPressed = gamepad.buttons[GAMEPAD_BUTTONS.LB]?.pressed ?? false
+    const rbPressed = gamepad.buttons[GAMEPAD_BUTTONS.RB]?.pressed ?? false
+    const bothHeld = lbPressed && rbPressed
+    const holdStartedAt = lockHoldStart.get(gamepad.index)
+
+    if (bothHeld) {
+      anyHoldActive = true
+      if (holdStartedAt === undefined) {
+        lockHoldStart.set(gamepad.index, Date.now())
+      } else if (!lockHoldEmitted.has(gamepad.index)) {
+        const elapsed = Date.now() - holdStartedAt
+        const progress = Math.min(1, elapsed / LOCK_HOLD_MS)
+        dispatchLockProgress(progress)
+        if (elapsed >= LOCK_HOLD_MS) {
+          lockHoldEmitted.add(gamepad.index)
+          buttonHandlers.forEach(handler => handler('LOCK_TOGGLE', true, false))
+        }
+      }
+    } else if (holdStartedAt !== undefined) {
+      lockHoldStart.delete(gamepad.index)
+      lockHoldEmitted.delete(gamepad.index)
+    }
+
+    // While locked, skip per-button emission so no normal actions fire.
+    if (lockActive) {
+      gamepad.buttons.forEach((button, index) => {
+        prevStates[index] = button.pressed
+      })
+      previousButtonStates.set(gamepad.index, prevStates)
+      continue
+    }
+
     gamepad.buttons.forEach((button, index) => {
+      // Suppress LB/RB individual events while both are held — the user is in lock-gesture mode.
+      if (bothHeld && (index === GAMEPAD_BUTTONS.LB || index === GAMEPAD_BUTTONS.RB)) {
+        prevStates[index] = button.pressed
+        return
+      }
       const isPressed = button.pressed
       const wasPressed = prevStates[index] || false
       const holdKey = `${gamepad.index}-${index}`
 
       if (isPressed && !wasPressed) {
-        const buttonName = Object.entries(GAMEPAD_BUTTONS).find(([_, bi]) => bi === index)?.[0]
+        const buttonName = Object.entries(GAMEPAD_BUTTONS).find(([, bi]) => bi === index)?.[0]
         if (buttonName) {
           const now = performance.now()
           const lastEmit = lastButtonEmitTime.get(buttonName) ?? 0
@@ -158,7 +225,7 @@ function pollGamepads() {
           const elapsed = now - hold.lastEmit
           const threshold = hold.repeating ? REPEAT_INTERVAL : REPEAT_INITIAL_DELAY
           if (elapsed >= threshold) {
-            const buttonName = Object.entries(GAMEPAD_BUTTONS).find(([_, bi]) => bi === index)?.[0]
+            const buttonName = Object.entries(GAMEPAD_BUTTONS).find(([, bi]) => bi === index)?.[0]
             if (buttonName) {
               const perfNow = performance.now()
               const lastBtnEmit = lastButtonEmitTime.get(buttonName) ?? 0
@@ -181,6 +248,10 @@ function pollGamepads() {
     previousButtonStates.set(gamepad.index, prevStates)
   }
 
+  if (!anyHoldActive && lockProgress !== 0) {
+    dispatchLockProgress(0)
+  }
+
   animationFrameId = requestAnimationFrame(pollGamepads)
 }
 
@@ -196,7 +267,7 @@ export function initGamepad(handler: GamepadButtonHandler) {
     initialSetupTimer = setTimeout(() => { initialSetupDone = true }, 2000)
   }
 
-  const api = (window as any).electronAPI
+  const api = window.electronAPI
   const cleanupSystemGamepads = api?.onSystemGamepads?.((detected: boolean) => {
     systemGamepadsDetected = detected
     if (detected && filterGamepads([...navigator.getGamepads()]).length === 0) {
@@ -273,8 +344,9 @@ export function initGamepad(handler: GamepadButtonHandler) {
     }
 
     // Detect Xbox ephemeral virtual: Steam controller that lived < 1s
-    // Only trigger when focused — background churn from Steam reassigning virtuals to another game is expected
-    if (windowFocused && isSteamController(e.gamepad) && connectTime && (Date.now() - connectTime) < 1000) {
+    // Only trigger when focused — background churn from Steam reassigning virtuals to another game is expected.
+    // Skipped entirely in lax mode — raw hardware is already being polled, no recovery needed.
+    if (inputMode === 'strict' && windowFocused && isSteamController(e.gamepad) && connectTime && (Date.now() - connectTime) < 1000) {
       console.log('[Gamepad] Steam virtual dropout detected (lived', Date.now() - connectTime, 'ms) — requesting Xbox recovery')
       xboxRecoveryActive = true
       if (xboxRecoveryTimer) clearTimeout(xboxRecoveryTimer)

@@ -428,6 +428,13 @@ ipcMain.handle('app-restart', async () => {
   app.exit(0)
 })
 
+ipcMain.handle('app-exit', () => {
+  logToFile('App exit requested')
+  // Don't wait on proxyServer.close — keep-alive connections can hang it indefinitely.
+  // The OS will reclaim the socket when the process exits.
+  app.exit(0)
+})
+
 app.whenReady().then(async () => {
   console.log(`[Log] Writing to ${logPath}`)
   logToFile('App ready')
