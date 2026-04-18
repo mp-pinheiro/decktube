@@ -28,7 +28,7 @@ export function setGamepadLockActive(active: boolean) { lockActive = active }
 // Lock is triggered by holding LB + RB for LOCK_HOLD_MS.
 // While the combo is held, individual LB/RB events are suppressed so pressing both
 // doesn't also fire fullscreen and nextTab. Progress events drive the UI indicator.
-const LOCK_HOLD_MS = 3000
+export const LOCK_HOLD_MS = 1000
 const lockHoldStart = new Map<number, number>()
 const lockHoldEmitted = new Set<number>()
 let lockProgress = 0

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { initGamepad } from '../lib/gamepad'
+import { initGamepad, LOCK_HOLD_MS } from '../lib/gamepad'
 import { handleSpatialNav } from '../lib/spatialNav'
 import { bootstrapNavFocus, forceBootstrapNavFocus, waitForBootstrap, initNavFocusCleanup } from '../lib/focusManager'
 import { keyToIntent, gamepadToIntent, type InputIntent } from '../lib/inputMap'
@@ -195,9 +195,8 @@ export function InputProvider({ children }: InputProviderProps) {
 
     window.addEventListener('keydown', handleKeydown)
 
-    // Hold "-" for 3s to toggle input lock (keyboard equivalent of gamepad LB+RB hold).
+    // Hold "-" to toggle input lock (keyboard equivalent of gamepad LB+RB hold).
     // Runs outside keyToIntent/layer system so it works even while locked.
-    const LOCK_HOLD_MS = 3000
     let lockHoldStart: number | null = null
     let lockRafId: number | null = null
     let lockEmitted = false

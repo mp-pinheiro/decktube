@@ -43,7 +43,6 @@ export async function initFirebaseAuth(idToken: string | null): Promise<User> {
     throw new Error('Firebase not configured')
   }
 
-  // Path 1: reuse module-level cached user
   if (currentUser) {
     try {
       await currentUser.getIdToken(true)
@@ -55,7 +54,6 @@ export async function initFirebaseAuth(idToken: string | null): Promise<User> {
     }
   }
 
-  // Path 2: Firebase restored session from IndexedDB
   await auth.authStateReady()
   if (auth.currentUser) {
     try {
@@ -68,7 +66,6 @@ export async function initFirebaseAuth(idToken: string | null): Promise<User> {
     }
   }
 
-  // Path 3: fresh credential with Google id_token
   if (!idToken) {
     throw new Error('No valid authentication available')
   }

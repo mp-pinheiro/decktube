@@ -283,7 +283,6 @@ async function createWindow() {
     logToFile('[Xbox] Ephemeral virtual detected')
 
     try {
-      // Try USB kill first
       const base = '/sys/bus/usb/devices'
       try {
         const devs = await fsPromises.readdir(base)
@@ -301,7 +300,6 @@ async function createWindow() {
         }
       } catch {}
 
-      // No USB device — try BT disconnect
       try {
         const btDevices = await execFileAsync('bluetoothctl', ['devices'], { encoding: 'utf8', timeout: 3000 })
         logToFile(`[Xbox] BT devices:\n${btDevices.trim()}`)
@@ -321,7 +319,6 @@ async function createWindow() {
         logToFile(`[Xbox] BT failed: ${btErr.message}`)
       }
 
-      // Nothing worked
       logToFile('[Xbox] No USB or BT Xbox device found')
       sendReconnectPrompt()
     } catch (err) {

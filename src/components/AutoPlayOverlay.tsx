@@ -22,7 +22,6 @@ export default function AutoPlayOverlay({ open, video, onPlay, onCancel }: AutoP
 
   useEffect(() => {
     if (!open) {
-      // Reset countdown when overlay closes so the next open starts fresh.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setCountdown(COUNTDOWN_SECONDS)
       return

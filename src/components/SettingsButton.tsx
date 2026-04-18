@@ -18,7 +18,7 @@ const SHORTCUTS = [
   { action: 'Switch Tab', keyboard: '[ / ]', gamepad: 'LB / RB' },
   { action: 'Navigate', keyboard: 'Arrows', gamepad: 'D-Pad' },
   { action: 'Help / Settings', keyboard: 'H', gamepad: 'Select' },
-  { action: 'Lock input', keyboard: 'Hold -', gamepad: 'Hold LB + RB (3s)' },
+  { action: 'Lock input', keyboard: 'Hold -', gamepad: 'Hold LB + RB' },
 ]
 
 export default function SettingsButton() {
@@ -37,7 +37,6 @@ export default function SettingsButton() {
     items[clamped].focus()
   }, [])
 
-  // Global H / Select toggles the modal open/closed.
   useEffect(() => {
     return pushInputLayer('settings-toggle', (intent) => {
       if (intent !== 'help') return false
@@ -54,7 +53,6 @@ export default function SettingsButton() {
     requestAnimationFrame(() => focusItem(0))
   }, [open, focusItem])
 
-  // Re-seed focus to current index when the focusable set changes (restart banner appears).
   useEffect(() => {
     if (!open) return
     requestAnimationFrame(() => focusItem(focusIndexRef.current))
@@ -92,7 +90,6 @@ export default function SettingsButton() {
     if (next === mode) return
     setInputMode(next)
     setModeState(next)
-    // Reverting to the value loaded at startup means no restart is needed.
     setRestartPending(next !== initialMode)
   }
 
@@ -181,7 +178,7 @@ export default function SettingsButton() {
                       selected={mode === 'lax'}
                       onSelect={() => handleModeChange('lax')}
                       title="Lax"
-                      desc="Raw hardware allowed. Xbox works immediately at launch. Hold LB+RB for 3s to lock input before opening the Steam overlay."
+                      desc="Raw hardware allowed. Xbox works immediately at launch. Hold LB+RB to lock input before opening the Steam overlay."
                     />
                   </div>
                   {restartPending && (

@@ -216,7 +216,6 @@ export default function WatchPage() {
   useEffect(() => {
     if (!videoId) return
 
-    // Reset per-video state before fetching. This is the standard "derived-from-prop reset" pattern.
     /* eslint-disable react-hooks/set-state-in-effect */
     setLoading(true)
     setError(null)
@@ -234,7 +233,6 @@ export default function WatchPage() {
     midPlaybackErrorRef.current = false
 
     let cancelled = false
-
     async function load() {
       const [details, playerData, sbSegments] = await Promise.all([
         getVideoDetails(videoId!),
@@ -327,7 +325,6 @@ export default function WatchPage() {
   useEffect(() => {
     if (!videoId) return
     let cancelled = false
-    // Reset next-video for the new videoId before fetching related list.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setNextVideo(null)
     getRelatedVideos(videoId).then(videos => {

@@ -8,7 +8,6 @@ const ANIM_MS = 300
 export default function InputLock() {
   const [locked, setLocked] = useState(false)
   const [progress, setProgress] = useState(0)
-  // mounted keeps the overlay in the DOM during the exit animation
   const [mounted, setMounted] = useState(false)
   const [animIn, setAnimIn] = useState(false)
   const exitTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -74,7 +73,7 @@ export default function InputLock() {
               {animIn ? 'INPUT LOCKED' : 'UNLOCKED'}
             </div>
             <div className="text-sm text-zinc-400">
-              Hold <kbd className="px-1.5 py-0.5 bg-zinc-800 rounded text-xs font-mono text-zinc-300">LB + RB</kbd> or <kbd className="px-1.5 py-0.5 bg-zinc-800 rounded text-xs font-mono text-zinc-300">-</kbd> for 3s to unlock
+              Hold <kbd className="px-1.5 py-0.5 bg-zinc-800 rounded text-xs font-mono text-zinc-300">LB + RB</kbd> or <kbd className="px-1.5 py-0.5 bg-zinc-800 rounded text-xs font-mono text-zinc-300">-</kbd> to unlock
             </div>
           </div>
         </div>
