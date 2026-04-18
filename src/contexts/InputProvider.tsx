@@ -195,6 +195,46 @@ export function InputProvider({ children }: InputProviderProps) {
 
     window.addEventListener('keydown', handleKeydown)
 
+    // Hold "-" for 3s to toggle input lock (keyboard equivalent of gamepad LB+RB hold).
+    // Runs outside keyToIntent/layer system so it works even while locked.
+    const LOCK_HOLD_MS = 3000
+    let lockHoldStart: number | null = null
+    let lockRafId: number | null = null
+    let lockEmitted = false
+
+    function lockProgressLoop() {
+      if (lockHoldStart === null) return
+      const elapsed = Date.now() - lockHoldStart
+      const progress = Math.min(1, elapsed / LOCK_HOLD_MS)
+      window.dispatchEvent(new CustomEvent('input-lock-progress', { detail: { progress } }))
+      if (elapsed >= LOCK_HOLD_MS && !lockEmitted) {
+        lockEmitted = true
+        window.dispatchEvent(new CustomEvent('input-lock-toggle'))
+        return
+      }
+      lockRafId = requestAnimationFrame(lockProgressLoop)
+    }
+
+    const handleLockKeydown = (e: KeyboardEvent) => {
+      if (e.key !== '-' || e.repeat) return
+      const activeEl = document.activeElement as HTMLElement | null
+      if (activeEl?.tagName === 'INPUT' || activeEl?.tagName === 'TEXTAREA') return
+      lockHoldStart = Date.now()
+      lockEmitted = false
+      lockRafId = requestAnimationFrame(lockProgressLoop)
+    }
+
+    const handleLockKeyup = (e: KeyboardEvent) => {
+      if (e.key !== '-') return
+      if (lockRafId !== null) { cancelAnimationFrame(lockRafId); lockRafId = null }
+      lockHoldStart = null
+      lockEmitted = false
+      window.dispatchEvent(new CustomEvent('input-lock-progress', { detail: { progress: 0 } }))
+    }
+
+    window.addEventListener('keydown', handleLockKeydown)
+    window.addEventListener('keyup', handleLockKeyup)
+
     const handleGamepadConnect = () => bootstrapNavFocus()
     window.addEventListener('gamepadconnected', handleGamepadConnect)
 
@@ -256,6 +296,9 @@ export function InputProvider({ children }: InputProviderProps) {
 
     return () => {
       window.removeEventListener('keydown', handleKeydown)
+      window.removeEventListener('keydown', handleLockKeydown)
+      window.removeEventListener('keyup', handleLockKeyup)
+      if (lockRafId !== null) cancelAnimationFrame(lockRafId)
       window.removeEventListener('gamepadconnected', handleGamepadConnect)
       cleanupNavFocus()
       cleanupGamepad()

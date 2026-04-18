@@ -18,7 +18,7 @@ const SHORTCUTS = [
   { action: 'Switch Tab', keyboard: '[ / ]', gamepad: 'LB / RB' },
   { action: 'Navigate', keyboard: 'Arrows', gamepad: 'D-Pad' },
   { action: 'Help / Settings', keyboard: 'H', gamepad: 'Select' },
-  { action: 'Lock input', keyboard: '—', gamepad: 'Hold LB + RB (3s)' },
+  { action: 'Lock input', keyboard: 'Hold -', gamepad: 'Hold LB + RB (3s)' },
 ]
 
 export default function SettingsButton() {
