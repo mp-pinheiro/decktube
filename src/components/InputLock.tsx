@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Lock, Unlock } from 'lucide-react'
 import { pushInputLayer } from '../lib/inputLayer'
 import { setGamepadLockActive } from '../lib/gamepad'
@@ -10,6 +11,7 @@ export default function InputLock() {
   const [progress, setProgress] = useState(0)
   const [mounted, setMounted] = useState(false)
   const [animIn, setAnimIn] = useState(false)
+  const [portalTarget, setPortalTarget] = useState<Element | null>(null)
   const exitTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -47,9 +49,15 @@ export default function InputLock() {
     return () => { if (exitTimer.current) clearTimeout(exitTimer.current) }
   }, [locked])
 
+  useEffect(() => {
+    const onFsChange = () => setPortalTarget(document.fullscreenElement)
+    document.addEventListener('fullscreenchange', onFsChange)
+    return () => document.removeEventListener('fullscreenchange', onFsChange)
+  }, [])
+
   const showHoldIndicator = progress > 0 && progress < 1
 
-  return (
+  const jsx = (
     <>
       {mounted && (
         <div
@@ -90,6 +98,8 @@ export default function InputLock() {
       )}
     </>
   )
+
+  return portalTarget ? createPortal(jsx, portalTarget) : jsx
 }
 
 function ProgressRing({ progress, locked }: { progress: number; locked: boolean }) {

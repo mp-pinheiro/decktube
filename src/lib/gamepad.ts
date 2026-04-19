@@ -33,6 +33,12 @@ const lockHoldStart = new Map<number, number>()
 const lockHoldEmitted = new Set<number>()
 let lockProgress = 0
 
+// When LB or RB is pressed alone, defer emission briefly to see if the other arrives.
+// Without this, pressing LB slightly before RB fires fullscreen before the hold is detected.
+const LB_RB_GRACE_MS = 80
+const lbPending = new Map<number, number>()
+const rbPending = new Map<number, number>()
+
 function dispatchLockProgress(progress: number) {
   if (progress === lockProgress) return
   lockProgress = progress
@@ -143,6 +149,8 @@ function pollGamepads() {
     if (wasFocused) {
       previousButtonStates.clear()
       buttonHoldState.clear()
+      lbPending.clear()
+      rbPending.clear()
       wasFocused = false
     }
     animationFrameId = requestAnimationFrame(pollGamepads)
@@ -152,17 +160,28 @@ function pollGamepads() {
   if (!wasFocused) {
     previousButtonStates.clear()
     buttonHoldState.clear()
+    lbPending.clear()
+    rbPending.clear()
     wasFocused = true
   }
 
   const gamepads = filterGamepads([...navigator.getGamepads()])
+
+  function emitButton(buttonName: string, isRepeat = false) {
+    const now = performance.now()
+    const lastEmit = lastButtonEmitTime.get(buttonName) ?? 0
+    if (now - lastEmit >= BUTTON_DEDUP_MS) {
+      lastButtonEmitTime.set(buttonName, now)
+      buttonHandlers.forEach(handler => handler(buttonName, true, isRepeat))
+    }
+  }
 
   let anyHoldActive = false
 
   for (const gamepad of gamepads) {
     const prevStates = previousButtonStates.get(gamepad.index) ?? []
 
-    // Hold-LB+RB-for-3s → toggle lock. Runs regardless of lockActive so unlock works.
+    // Runs regardless of lockActive so unlock works.
     const lbPressed = gamepad.buttons[GAMEPAD_BUTTONS.LB]?.pressed ?? false
     const rbPressed = gamepad.buttons[GAMEPAD_BUTTONS.RB]?.pressed ?? false
     const bothHeld = lbPressed && rbPressed
@@ -186,7 +205,6 @@ function pollGamepads() {
       lockHoldEmitted.delete(gamepad.index)
     }
 
-    // While locked, skip per-button emission so no normal actions fire.
     if (lockActive) {
       gamepad.buttons.forEach((button, index) => {
         prevStates[index] = button.pressed
@@ -195,8 +213,23 @@ function pollGamepads() {
       continue
     }
 
+    // Flush deferred LB/RB if grace window expired and the other button never arrived.
+    const now = Date.now()
+    if (lbPending.has(gamepad.index) && !rbPressed && now - lbPending.get(gamepad.index)! >= LB_RB_GRACE_MS) {
+      lbPending.delete(gamepad.index)
+      emitButton('LB')
+    }
+    if (rbPending.has(gamepad.index) && !lbPressed && now - rbPending.get(gamepad.index)! >= LB_RB_GRACE_MS) {
+      rbPending.delete(gamepad.index)
+      emitButton('RB')
+    }
+    // Both arrived within the grace window — cancel pending, hold detection handles it.
+    if (bothHeld) {
+      lbPending.delete(gamepad.index)
+      rbPending.delete(gamepad.index)
+    }
+
     gamepad.buttons.forEach((button, index) => {
-      // Suppress LB/RB individual events while both are held — the user is in lock-gesture mode.
       if (bothHeld && (index === GAMEPAD_BUTTONS.LB || index === GAMEPAD_BUTTONS.RB)) {
         prevStates[index] = button.pressed
         return
@@ -206,14 +239,14 @@ function pollGamepads() {
       const holdKey = `${gamepad.index}-${index}`
 
       if (isPressed && !wasPressed) {
-        const buttonName = Object.entries(GAMEPAD_BUTTONS).find(([, bi]) => bi === index)?.[0]
-        if (buttonName) {
-          const now = performance.now()
-          const lastEmit = lastButtonEmitTime.get(buttonName) ?? 0
-          if (now - lastEmit >= BUTTON_DEDUP_MS) {
-            lastButtonEmitTime.set(buttonName, now)
-            buttonHandlers.forEach(handler => handler(buttonName, true, false))
-          }
+        // Defer LB/RB to allow the other button to arrive before emitting.
+        if (index === GAMEPAD_BUTTONS.LB && !rbPressed) {
+          lbPending.set(gamepad.index, Date.now())
+        } else if (index === GAMEPAD_BUTTONS.RB && !lbPressed) {
+          rbPending.set(gamepad.index, Date.now())
+        } else {
+          const buttonName = Object.entries(GAMEPAD_BUTTONS).find(([, bi]) => bi === index)?.[0]
+          if (buttonName) emitButton(buttonName)
         }
         if (DPAD_BUTTONS.has(index)) {
           buttonHoldState.set(holdKey, { lastEmit: Date.now(), repeating: false })
@@ -226,19 +259,20 @@ function pollGamepads() {
           const threshold = hold.repeating ? REPEAT_INTERVAL : REPEAT_INITIAL_DELAY
           if (elapsed >= threshold) {
             const buttonName = Object.entries(GAMEPAD_BUTTONS).find(([, bi]) => bi === index)?.[0]
-            if (buttonName) {
-              const perfNow = performance.now()
-              const lastBtnEmit = lastButtonEmitTime.get(buttonName) ?? 0
-              if (perfNow - lastBtnEmit >= BUTTON_DEDUP_MS) {
-                lastButtonEmitTime.set(buttonName, perfNow)
-                buttonHandlers.forEach(handler => handler(buttonName, true, true))
-              }
-            }
+            if (buttonName) emitButton(buttonName, true)
             hold.lastEmit = now
             hold.repeating = true
           }
         }
       } else if (!isPressed) {
+        // If LB/RB released before grace expired, flush immediately.
+        if (index === GAMEPAD_BUTTONS.LB && lbPending.has(gamepad.index)) {
+          lbPending.delete(gamepad.index)
+          emitButton('LB')
+        } else if (index === GAMEPAD_BUTTONS.RB && rbPending.has(gamepad.index)) {
+          rbPending.delete(gamepad.index)
+          emitButton('RB')
+        }
         buttonHoldState.delete(holdKey)
       }
 
