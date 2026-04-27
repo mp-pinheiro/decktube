@@ -33,10 +33,6 @@ const KEYBOARD_MAP: Record<string, InputIntent> = {
   arrowdown: 'nav_down',
   arrowleft: 'nav_left',
   arrowright: 'nav_right',
-  mediaplaypause: 'play',
-  mediapause: 'play',
-  mediaplay: 'play',
-  mediatracknext: 'next',
 }
 
 const GAMEPAD_MAP: Record<string, InputIntent> = {

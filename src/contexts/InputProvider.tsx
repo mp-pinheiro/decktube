@@ -187,6 +187,20 @@ export function InputProvider({ children }: InputProviderProps) {
     const handleKeydown = (e: KeyboardEvent) => {
       if (virtualKeyboardOpenRef.current) return
 
+      // Media keys (headphone play/pause, keyboard media keys) always control
+      // playback, even while the input lock is engaged. Routed outside the
+      // keyToIntent/layer pipeline so the lock cannot swallow them.
+      if (e.key === 'MediaPlayPause' || e.key === 'MediaPlay' || e.key === 'MediaPause') {
+        if (e.repeat) return
+        actionsRef.current.play?.()
+        return
+      }
+      if (e.key === 'MediaTrackNext') {
+        if (e.repeat) return
+        actionsRef.current.next?.()
+        return
+      }
+
       const intent = keyToIntent(e.key)
       if (!intent) return
 
