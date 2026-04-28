@@ -66,6 +66,7 @@ export default function WatchPage() {
   const initTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const midPlaybackErrorRef = useRef(false)
+  const initRetryRef = useRef(false)
 
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [playAction, setPlayAction] = useState(0)
@@ -120,6 +121,21 @@ export default function WatchPage() {
       return request
     })
 
+    dp.updateSettings({
+      streaming: {
+        retryAttempts: {
+          MediaSegment: 4,
+          InitializationSegment: 4,
+          MPD: 3,
+        },
+        retryIntervals: {
+          MediaSegment: 1000,
+          InitializationSegment: 1000,
+          MPD: 500,
+        },
+      },
+    })
+
     dp.initialize(videoElRef.current, url, true)
 
     initTimerRef.current = setTimeout(() => {
@@ -161,6 +177,16 @@ export default function WatchPage() {
     dp.on('error', (e: unknown) => {
       console.error('dash.js error:', e)
       if (!dp.isReady()) {
+        if (!initRetryRef.current && blobUrlRef.current) {
+          initRetryRef.current = true
+          try {
+            console.warn('dash.js init error, retrying attachSource')
+            dp.attachSource(blobUrlRef.current, 0)
+            return
+          } catch (retryErr) {
+            console.error('dash.js init retry failed:', retryErr)
+          }
+        }
         if (initTimerRef.current) {
           clearTimeout(initTimerRef.current)
           initTimerRef.current = null
@@ -231,6 +257,7 @@ export default function WatchPage() {
     cpnRef.current = generateCpn()
     playbackStartedRef.current = false
     midPlaybackErrorRef.current = false
+    initRetryRef.current = false
 
     let cancelled = false
     async function load() {
