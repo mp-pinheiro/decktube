@@ -36,4 +36,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('reconnect-prompt', listener)
     return () => ipcRenderer.removeListener('reconnect-prompt', listener)
   },
+  onMediaKey: (callback) => {
+    const listener = (_event, action) => callback(action)
+    ipcRenderer.on('media-key', listener)
+    return () => ipcRenderer.removeListener('media-key', listener)
+  },
 })

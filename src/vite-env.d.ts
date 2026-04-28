@@ -20,6 +20,7 @@ interface ElectronAPI {
   onReconnectPrompt: (callback: () => void) => () => void
   reportXboxDropout: () => void
   reportSteamConnected: () => void
+  onMediaKey: (callback: (action: 'play-pause' | 'next' | 'prev') => void) => () => void
 }
 
 declare global {

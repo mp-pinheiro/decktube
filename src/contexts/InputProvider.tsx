@@ -208,6 +208,14 @@ export function InputProvider({ children }: InputProviderProps) {
 
     window.addEventListener('keydown', handleKeydown)
 
+    // Global media keys delivered via Electron's globalShortcut → IPC.
+    // Fires regardless of window focus so headphone Play/Pause works while a game is foregrounded.
+    const unsubscribeMediaKey = window.electronAPI?.onMediaKey?.((action) => {
+      if (action === 'play-pause') actionsRef.current.play?.()
+      else if (action === 'next') actionsRef.current.next?.()
+      // 'prev' has no DeckTube action yet; intentional no-op.
+    })
+
     // Hold "-" to toggle input lock (keyboard equivalent of gamepad LB+RB hold).
     // Runs outside keyToIntent/layer system so it works even while locked.
     let lockHoldStart: number | null = null
@@ -312,6 +320,7 @@ export function InputProvider({ children }: InputProviderProps) {
       window.removeEventListener('keyup', handleLockKeyup)
       if (lockRafId !== null) cancelAnimationFrame(lockRafId)
       window.removeEventListener('gamepadconnected', handleGamepadConnect)
+      unsubscribeMediaKey?.()
       cleanupNavFocus()
       cleanupGamepad()
     }

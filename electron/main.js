@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, shell } from 'electron'
 
 import { createServer } from 'http'
 import https from 'https'
@@ -466,11 +466,28 @@ ipcMain.handle('app-exit', () => {
   app.exit(0)
 })
 
+function registerMediaKeys() {
+  const send = (action) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('media-key', action)
+    }
+  }
+  const ok1 = globalShortcut.register('MediaPlayPause', () => send('play-pause'))
+  const ok2 = globalShortcut.register('MediaNextTrack', () => send('next'))
+  const ok3 = globalShortcut.register('MediaPreviousTrack', () => send('prev'))
+  logToFile(`[GlobalShortcut] register MediaPlayPause=${ok1} MediaNextTrack=${ok2} MediaPreviousTrack=${ok3}`)
+}
+
 app.whenReady().then(async () => {
   console.log(`[Log] Writing to ${logPath}`)
   logToFile('App ready')
   await createWindow()
+  registerMediaKeys()
   initAutoUpdater()
+})
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
 })
 
 app.on('window-all-closed', () => {
