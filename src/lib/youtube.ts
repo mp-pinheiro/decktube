@@ -204,27 +204,49 @@ function parseVideoRenderer(renderer: VideoRenderer | CompactVideoRenderer | und
   }
 }
 
+function isVerticalThumbnail(thumbnails: YouTubeThumbnail[] | undefined): boolean {
+  if (!thumbnails || thumbnails.length === 0) return false
+  const t = thumbnails[thumbnails.length - 1]
+  if (!t.width || !t.height) return false
+  return t.height > t.width
+}
+
 function isFilteredOut(renderer: any): boolean {
   if (renderer.badges) {
     for (const badge of renderer.badges) {
       const meta = badge.metadataBadgeRenderer
       if (!meta) continue
       if (meta.style === 'BADGE_STYLE_TYPE_LIVE_NOW') return true
-      if (typeof meta.label === 'string' && meta.label.toUpperCase().includes('LIVE')) return true
+      if (meta.style === 'BADGE_STYLE_TYPE_YT_SHORTS') return true
+      if (typeof meta.label === 'string') {
+        const upper = meta.label.toUpperCase()
+        if (upper.includes('LIVE')) return true
+        if (upper === 'SHORTS') return true
+      }
     }
   }
 
   if (renderer.thumbnailOverlays) {
     for (const overlay of renderer.thumbnailOverlays) {
-      const style = overlay.thumbnailOverlayTimeStatusRenderer?.style
+      const status = overlay.thumbnailOverlayTimeStatusRenderer
+      const style = status?.style
       if (style === 'LIVE' || style === 'UPCOMING' || style === 'SHORTS') return true
+      const iconType: string | undefined = status?.icon?.iconType
+      if (typeof iconType === 'string' && iconType.toUpperCase().includes('SHORTS')) return true
     }
   }
 
   if (renderer.navigationEndpoint?.reelWatchEndpoint) return true
 
+  const navMeta = renderer.navigationEndpoint?.commandMetadata?.webCommandMetadata
+  const navUrl: string | undefined = navMeta?.url
+  if (typeof navUrl === 'string' && navUrl.includes('/shorts/')) return true
+  if (navMeta?.webPageType === 'WEB_PAGE_TYPE_SHORTS') return true
+
   const playlistId = renderer.navigationEndpoint?.watchEndpoint?.playlistId
   if (typeof playlistId === 'string' && playlistId.startsWith('RD')) return true
+
+  if (isVerticalThumbnail(renderer.thumbnail?.thumbnails)) return true
 
   return false
 }
@@ -262,16 +284,22 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
         if (video) videos.push(video)
       }
     } else if ('lockupViewModel' in item) {
-      const lockup = (item as { lockupViewModel: { contentId?: string; thumbnail?: unknown; metadata?: unknown; rendererContext?: any } }).lockupViewModel
+      const lockup = (item as { lockupViewModel: { contentId?: string; contentType?: string; thumbnail?: unknown; contentImage?: unknown; metadata?: unknown; rendererContext?: any } }).lockupViewModel
+      if (lockup.contentType === 'LOCKUP_CONTENT_TYPE_SHORTS') return
       if (lockup.contentId?.startsWith('shorts:')) return
       if (lockup.rendererContext?.commandContext?.onTap?.innertubeCommand?.reelWatchEndpoint) return
       if (lockup.contentId?.startsWith('video:')) {
         const videoId = lockup.contentId.replace('video:', '')
-        const thumbnail = lockup.thumbnail as { thumbnailViewModel?: { image?: { sources?: Array<{ url?: string }> } } }
+        const thumbnailContainer = (lockup.contentImage ?? lockup.thumbnail) as { thumbnailViewModel?: { image?: { sources?: Array<{ url?: string; width?: number; height?: number }> } } }
+        const sources = thumbnailContainer?.thumbnailViewModel?.image?.sources ?? []
+        const thumbnails: YouTubeThumbnail[] = sources
+          .filter(s => s.url)
+          .map(s => ({ url: s.url as string, width: s.width ?? 0, height: s.height ?? 0 }))
+        if (isVerticalThumbnail(thumbnails)) return
         const metadata = lockup.metadata as { contentMetadataViewModel?: { title?: { content?: string }; subtitle?: unknown } }
 
         const title = metadata?.contentMetadataViewModel?.title?.content || ''
-        const thumbnailUrl = thumbnail?.thumbnailViewModel?.image?.sources?.[0]?.url || ''
+        const thumbnailUrl = sources[0]?.url || ''
 
         let channelName = ''
         let channelId = ''
@@ -340,6 +368,7 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
       }
     } else if ('tileRenderer' in item) {
       const tile = item.tileRenderer as any
+      if (tile.onSelectCommand?.reelWatchEndpoint) return
       const videoId = tile.onSelectCommand?.watchEndpoint?.videoId
 
       if (videoId) {
@@ -356,12 +385,19 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
           }))
         }
 
+        if (isVerticalThumbnail(thumbnails)) return
+
         let duration: number | undefined
         let isExcluded = false
         const overlays = tile.header?.tileHeaderRenderer?.thumbnailOverlays || []
         for (const overlay of overlays) {
           const timeStatus = overlay.thumbnailOverlayTimeStatusRenderer
           if (timeStatus?.style === 'LIVE' || timeStatus?.style === 'SHORTS') {
+            isExcluded = true
+            break
+          }
+          const iconType: string | undefined = timeStatus?.icon?.iconType
+          if (typeof iconType === 'string' && iconType.toUpperCase().includes('SHORTS')) {
             isExcluded = true
             break
           }
@@ -408,6 +444,14 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
           publishedTimeText: publishedTimeText || undefined,
         })
       }
+    } else if ('shelfRenderer' in item) {
+      const shelf = item.shelfRenderer as any
+      const al = shelf?.headerRenderer?.shelfHeaderRenderer?.avatarLockup?.avatarLockupRenderer
+      const iconType: string | undefined = al?.icon?.iconType
+      const headerTitle: string | undefined = al?.title?.runs?.[0]?.text || al?.title?.simpleText
+      if (typeof iconType === 'string' && iconType.toUpperCase().includes('SHORTS')) return
+      if (typeof headerTitle === 'string' && headerTitle.toLowerCase() === 'shorts') return
+      walk(shelf.content)
     } else if ('reelShelfRenderer' in item || 'reelItemRenderer' in item || 'shortsLockupViewModel' in item) {
       return
     } else {
@@ -429,6 +473,7 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
       return true
     })
     .filter(v => v.duration !== undefined && v.duration > 0)
+    .filter(v => !isVerticalThumbnail(v.thumbnails))
 }
 
 function extractContinuationToken(data: unknown): string | null {
