@@ -121,6 +121,26 @@ function parseDuration(durationText: string): number {
   return 0
 }
 
+const AGE_UNIT_SECONDS: Record<string, number> = {
+  second: 1,
+  minute: 60,
+  hour: 3600,
+  day: 86400,
+  week: 604800,
+  month: 2592000,
+  year: 31536000,
+}
+
+export function parsePublishedAgeSeconds(text: string | undefined): number {
+  if (!text) return Number.MAX_SAFE_INTEGER
+  const match = text.toLowerCase().match(/(\d+)\s*(second|minute|hour|day|week|month|year)s?\s*ago/)
+  if (!match) return Number.MAX_SAFE_INTEGER
+  const value = parseInt(match[1], 10)
+  const unit = AGE_UNIT_SECONDS[match[2]]
+  if (!Number.isFinite(value) || !unit) return Number.MAX_SAFE_INTEGER
+  return value * unit
+}
+
 function parseViewCount(viewText: string): number {
   const match = viewText.match(/[\d.,]+/g)
   if (!match) return 0
@@ -899,7 +919,9 @@ export async function getSubscriptionsFeed(): Promise<HomeFeedResult> {
     browseId: 'FEsubscriptions',
   }, true)
 
-  const videos = extractVideosFromRenderers(response).map(v => ({ ...v, type: 'video' as const }))
+  const videos = extractVideosFromRenderers(response)
+    .map(v => ({ ...v, type: 'video' as const }))
+    .sort((a, b) => parsePublishedAgeSeconds(a.publishedTimeText) - parsePublishedAgeSeconds(b.publishedTimeText))
   const continuation = extractContinuationToken(response)
   return { videos, continuation }
 }
@@ -913,7 +935,9 @@ export async function getSubscriptionsFeedContinuation(continuationToken: string
     continuation: continuationToken,
   }, true)
 
-  const videos = extractVideosFromRenderers(response).map(v => ({ ...v, type: 'video' as const }))
+  const videos = extractVideosFromRenderers(response)
+    .map(v => ({ ...v, type: 'video' as const }))
+    .sort((a, b) => parsePublishedAgeSeconds(a.publishedTimeText) - parsePublishedAgeSeconds(b.publishedTimeText))
   const continuation = extractContinuationToken(response)
   return { videos, continuation }
 }

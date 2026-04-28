@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getHomeFeed, getHomeFeedContinuation, getSubscriptionsFeed, getSubscriptionsFeedContinuation } from '../lib/youtube'
+import { getHomeFeed, getHomeFeedContinuation, getSubscriptionsFeed, getSubscriptionsFeedContinuation, parsePublishedAgeSeconds } from '../lib/youtube'
 import type { YouTubeVideo } from '../lib/youtube'
 import { isAuthenticated } from '../lib/oauth'
 import { getHistory, removeFromHistory, clearHistory } from '../lib/historyStore'
@@ -170,9 +170,13 @@ export default function HomePage() {
         const existing = prev[tab]
         const existingIds = new Set(existing.videos.map(v => v.videoId))
         const newVideos = result.videos.filter(v => !existingIds.has(v.videoId))
+        const merged = [...existing.videos, ...newVideos]
+        const ordered = tab === 'subscriptions'
+          ? [...merged].sort((a, b) => parsePublishedAgeSeconds(a.publishedTimeText) - parsePublishedAgeSeconds(b.publishedTimeText))
+          : merged
         return {
           ...prev,
-          [tab]: { ...existing, videos: [...existing.videos, ...newVideos], continuation: result.continuation },
+          [tab]: { ...existing, videos: ordered, continuation: result.continuation },
         }
       })
     } catch (err) {
