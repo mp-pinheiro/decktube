@@ -7,7 +7,7 @@ import { createProxyMiddleware } from 'http-proxy-middleware'
 import express from 'express'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
-import { appendFileSync, readFileSync, writeFileSync } from 'fs'
+import { appendFileSync, existsSync, readFileSync, statSync, writeFileSync } from 'fs'
 import { promises as fsPromises } from 'fs'
 import { execFile } from 'child_process'
 
@@ -397,6 +397,40 @@ async function initAutoUpdater() {
 
   ipcMain.handle('update-download', () => autoUpdater.downloadUpdate())
   ipcMain.handle('update-install', async () => {
+    const installerPath = autoUpdater.downloadedUpdateHelper?.file ?? null
+
+    // electron-updater's AppImage doInstall unlinks the running AppImage
+    // BEFORE checking the source exists. If the cached file is gone, mv fails
+    // and we're left with no AppImage on disk. Bail out early.
+    if (!installerPath || !existsSync(installerPath)) {
+      console.error('[Updater] Install aborted: pending file missing', { installerPath })
+      sendUpdateStatus({
+        status: 'error',
+        message: 'Update file is missing. Please download again.',
+      })
+      autoUpdater.checkForUpdates().catch(() => {})
+      return
+    }
+
+    try {
+      if (statSync(installerPath).size === 0) {
+        console.error('[Updater] Install aborted: pending file empty', { installerPath })
+        sendUpdateStatus({
+          status: 'error',
+          message: 'Update file is empty. Please download again.',
+        })
+        autoUpdater.checkForUpdates().catch(() => {})
+        return
+      }
+    } catch (e) {
+      console.error('[Updater] Install aborted: stat failed', { installerPath, err: e?.message })
+      sendUpdateStatus({
+        status: 'error',
+        message: 'Update file is unreadable. Please download again.',
+      })
+      return
+    }
+
     if (proxyServer) {
       await new Promise(resolve => proxyServer.close(resolve))
     }
