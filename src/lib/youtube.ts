@@ -808,9 +808,18 @@ export async function getPlayerData(videoId: string): Promise<PlayerData> {
 
   const streamingData = data.streamingData as Record<string, unknown> | undefined
   const rawFormats = (streamingData?.adaptiveFormats as any[]) || []
+
+  // hl=en makes YouTube flag the locale-matching track as audioIsDefault, so
+  // prefer the track whose displayName marks it "original" over the dub.
+  const audioTracks = rawFormats.filter((f: any) => f.url && f.audioTrack)
+  const originalTrackId: string | undefined =
+    audioTracks.find((f: any) => /original/i.test(f.audioTrack?.displayName || ''))?.audioTrack?.id ??
+    audioTracks.find((f: any) => f.audioTrack?.audioIsDefault === true)?.audioTrack?.id ??
+    audioTracks[0]?.audioTrack?.id
+
   const adaptiveFormats: AdaptiveFormat[] = rawFormats
     .filter((f: any) => f.url)
-    .filter((f: any) => !f.audioTrack || f.audioTrack.audioIsDefault !== false)
+    .filter((f: any) => !f.audioTrack || f.audioTrack.id === originalTrackId)
     .map((f: any) => ({
       itag: f.itag,
       url: f.url,
