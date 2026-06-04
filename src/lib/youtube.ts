@@ -809,13 +809,8 @@ export async function getPlayerData(videoId: string): Promise<PlayerData> {
   const streamingData = data.streamingData as Record<string, unknown> | undefined
   const rawFormats = (streamingData?.adaptiveFormats as any[]) || []
 
-  // Pick the ORIGINAL audio track, not the locale-default one. Because we
-  // request with hl=en, YouTube marks whichever track matches that locale as
-  // audioIsDefault -- so for a non-English video with an English dub, the dub
-  // gets flagged default. The original track's displayName is rendered in
-  // English (hl=en) and contains the word "original" (e.g. "Portuguese
-  // (Brazil) original"); dubs do not. Select by audioTrack.id so all bitrates
-  // of the chosen track are kept for adaptive switching.
+  // hl=en makes YouTube flag the locale-matching track as audioIsDefault, so
+  // prefer the track whose displayName marks it "original" over the dub.
   const audioTracks = rawFormats.filter((f: any) => f.url && f.audioTrack)
   const originalTrackId: string | undefined =
     audioTracks.find((f: any) => /original/i.test(f.audioTrack?.displayName || ''))?.audioTrack?.id ??
