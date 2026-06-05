@@ -3,7 +3,6 @@ import { Outlet, useLocation } from 'react-router-dom'
 import Header from './Header'
 import { InputProvider } from '../contexts/InputProvider'
 import VirtualKeyboard from './VirtualKeyboard'
-import GamepadToast from './GamepadToast'
 import InputLock from './InputLock'
 import { isAuthenticated } from '../lib/oauth'
 import { initSync } from '../lib/firestoreSync'
@@ -49,7 +48,6 @@ export default function Layout() {
         </div>
       </div>
       <VirtualKeyboard />
-      <GamepadToast />
       <InputLock />
       <UpdateBannerErrorBoundary>
         <Suspense fallback={null}>

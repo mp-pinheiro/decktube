@@ -7,8 +7,7 @@ import { createProxyMiddleware } from 'http-proxy-middleware'
 import express from 'express'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
-import { appendFileSync, existsSync, readFileSync, statSync, writeFileSync } from 'fs'
-import { promises as fsPromises } from 'fs'
+import { appendFileSync, existsSync, statSync, writeFileSync } from 'fs'
 import { execFile } from 'child_process'
 
 function execFileAsync(cmd, args, options) {
@@ -210,17 +209,6 @@ async function createWindow() {
 
   mainWindow.loadURL(url)
 
-  mainWindow.webContents.on('did-finish-load', () => {
-    console.log('[Window] Page loaded')
-    try {
-      const devices = readFileSync('/proc/bus/input/devices', 'utf8')
-      const hasGamepad = /Handlers=.*js\d/m.test(devices)
-      if (hasGamepad) {
-        logToFile('[Gamepad] System gamepads detected via /proc/bus/input/devices')
-        mainWindow.webContents.send('system-gamepads-detected', true)
-      }
-    } catch {}
-  })
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
     console.error(`[Window] Page failed to load: ${errorCode} ${errorDescription}`)
   })
@@ -252,78 +240,6 @@ async function createWindow() {
     if (mainWindow && !mainWindow.isDestroyed()) {
       logToFile('Window focused')
       mainWindow.webContents.send('window-focus', true)
-    }
-  })
-
-  // Xbox virtual dropout: Steam creates an ephemeral virtual that dies in ~7ms.
-  // Try USB kill or BT disconnect/reconnect. Prompt only if auto-recovery fails.
-  let xboxRecoveryDone = false
-
-  function sendReconnectPrompt() {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      logToFile('[Xbox] Prompting user to reconnect')
-      mainWindow.webContents.send('reconnect-prompt')
-    }
-  }
-
-  ipcMain.on('steam-controller-connected', () => {
-    if (xboxRecoveryDone) {
-      logToFile('[Xbox] Steam controller connected, re-arming recovery for future dropouts')
-      xboxRecoveryDone = false
-    }
-  })
-
-  ipcMain.on('xbox-virtual-dropout', async () => {
-    if (xboxRecoveryDone) return
-    if (mainWindow && !mainWindow.isFocused()) {
-      logToFile('[Xbox] Ignoring dropout — window not focused')
-      return
-    }
-    xboxRecoveryDone = true
-    logToFile('[Xbox] Ephemeral virtual detected')
-
-    try {
-      const base = '/sys/bus/usb/devices'
-      try {
-        const devs = await fsPromises.readdir(base)
-        for (const dev of devs) {
-          try {
-            const vendor = (await fsPromises.readFile(`${base}/${dev}/idVendor`, 'utf8')).trim()
-            if (vendor === '045e') {
-              logToFile(`[Xbox] Killing USB device at ${base}/${dev}`)
-              await fsPromises.writeFile(`${base}/${dev}/authorized`, '0')
-              logToFile('[Xbox] USB device powered off')
-              sendReconnectPrompt()
-              return
-            }
-          } catch {}
-        }
-      } catch {}
-
-      try {
-        const btDevices = await execFileAsync('bluetoothctl', ['devices'], { encoding: 'utf8', timeout: 3000 })
-        logToFile(`[Xbox] BT devices:\n${btDevices.trim()}`)
-        for (const line of btDevices.split('\n')) {
-          if (/xbox/i.test(line)) {
-            const match = line.match(/([0-9A-F]{2}(?::[0-9A-F]{2}){5})/i)
-            if (match) {
-              logToFile(`[Xbox] Disconnecting BT device ${match[1]}`)
-              await execFileAsync('bluetoothctl', ['disconnect', match[1]], { encoding: 'utf8', timeout: 5000 })
-              logToFile('[Xbox] BT disconnected (press Xbox button to reconnect)')
-              sendReconnectPrompt()
-              return
-            }
-          }
-        }
-      } catch (btErr) {
-        logToFile(`[Xbox] BT failed: ${btErr.message}`)
-      }
-
-      logToFile('[Xbox] No USB or BT Xbox device found')
-      sendReconnectPrompt()
-    } catch (err) {
-      logToFile(`[Xbox] Recovery failed: ${err.message}`)
-      sendReconnectPrompt()
     }
   })
 }
@@ -447,24 +363,70 @@ async function initAutoUpdater() {
   })
 }
 
-ipcMain.handle('app-restart', async () => {
-  logToFile('App restarting to recover gamepad')
-  if (proxyServer) {
-    await new Promise(resolve => proxyServer.close(resolve))
-  }
-  const { spawn } = await import('child_process')
-  const appPath = process.env.APPIMAGE || process.execPath
-  logToFile(`Spawning: ${appPath}`)
-  spawn(appPath, [], { detached: true, stdio: 'ignore' }).unref()
-  app.exit(0)
-})
-
 ipcMain.handle('app-exit', () => {
   logToFile('App exit requested')
   // Don't wait on proxyServer.close — keep-alive connections can hang it indefinitely.
   // The OS will reclaim the socket when the process exits.
   app.exit(0)
 })
+
+// Steam overlay / QAM detection. The session compositor (gamescope) publishes, on its root window,
+// the appID with input focus (GAMESCOPE_FOCUSED_APP) and the base-game appID (GAMESCOPE_FOCUSED_APP_GFX).
+// They match while DeckTube has focus; when the overlay/QAM takes input focus they differ (overlay =
+// Steam UI appID, or absent for appID 0). We poll the session display and tell the renderer to suppress
+// controller input while the overlay is up — otherwise a raw (Steam-unvirtualized) controller keeps
+// emitting and leaks into the app behind the overlay. The app's own DISPLAY is a nested Xwayland, so we
+// auto-detect the session display (the one exposing GAMESCOPE_FOCUSED_APP_GFX).
+let overlayProbeTimer = null
+let overlayDisplay = null
+let overlayActive = false
+
+function readRootAtom(out, atom) {
+  const line = out.split('\n').find(l => l.startsWith(atom))
+  if (!line || line.indexOf('=') === -1) return null
+  return line.slice(line.indexOf('=') + 1).trim()
+}
+
+async function detectOverlayDisplay() {
+  for (const d of [':0', ':1', ':2']) {
+    try {
+      const out = await execFileAsync('xprop', ['-display', d, '-root', '-notype', 'GAMESCOPE_FOCUSED_APP_GFX'], { encoding: 'utf8', timeout: 2000 })
+      if (readRootAtom(out, 'GAMESCOPE_FOCUSED_APP_GFX') !== null) return d
+    } catch {}
+  }
+  return null
+}
+
+function setOverlayActive(active) {
+  if (active === overlayActive) return
+  overlayActive = active
+  logToFile(`[Overlay] ${active ? 'open — suppressing controller input' : 'closed'}`)
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('overlay-state', active)
+  }
+}
+
+async function startOverlayProbe() {
+  if (overlayProbeTimer) return
+  overlayDisplay = await detectOverlayDisplay()
+  if (!overlayDisplay) {
+    logToFile('[Overlay] no gamescope session display found — overlay suppression disabled')
+    return
+  }
+  logToFile(`[Overlay] watching display ${overlayDisplay}`)
+  overlayProbeTimer = setInterval(async () => {
+    try {
+      const out = await execFileAsync('xprop', ['-display', overlayDisplay, '-root', '-notype', 'GAMESCOPE_FOCUSED_APP', 'GAMESCOPE_FOCUSED_APP_GFX'], { encoding: 'utf8', timeout: 2000 })
+      const app = readRootAtom(out, 'GAMESCOPE_FOCUSED_APP')
+      const gfx = readRootAtom(out, 'GAMESCOPE_FOCUSED_APP_GFX')
+      // Fail open: only suppress when the base game is readable and something else holds input focus.
+      if (gfx === null) setOverlayActive(false)
+      else setOverlayActive(app === null || app !== gfx)
+    } catch {
+      setOverlayActive(false)
+    }
+  }, 300)
+}
 
 function registerMediaKeys() {
   const send = (action) => {
@@ -483,11 +445,13 @@ app.whenReady().then(async () => {
   logToFile('App ready')
   await createWindow()
   registerMediaKeys()
+  startOverlayProbe()
   initAutoUpdater()
 })
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
+  if (overlayProbeTimer) { clearInterval(overlayProbeTimer); overlayProbeTimer = null }
 })
 
 app.on('window-all-closed', () => {

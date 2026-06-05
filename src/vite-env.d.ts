@@ -13,13 +13,9 @@ interface ElectronAPI {
   downloadUpdate: () => Promise<void>
   installUpdate: () => Promise<void>
   openReleasesPage: () => Promise<void>
-  restartApp: () => Promise<void>
   exitApp: () => Promise<void>
   onWindowFocus: (callback: (focused: boolean) => void) => () => void
-  onSystemGamepads: (callback: (detected: boolean) => void) => () => void
-  onReconnectPrompt: (callback: () => void) => () => void
-  reportXboxDropout: () => void
-  reportSteamConnected: () => void
+  onOverlayState: (callback: (active: boolean) => void) => () => void
   onMediaKey: (callback: (action: 'play-pause' | 'next' | 'prev') => void) => () => void
 }
 

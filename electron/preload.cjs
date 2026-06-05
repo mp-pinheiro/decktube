@@ -17,24 +17,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   downloadUpdate: () => ipcRenderer.invoke('update-download'),
   installUpdate: () => ipcRenderer.invoke('update-install'),
   openReleasesPage: () => ipcRenderer.invoke('open-releases-page'),
-  restartApp: () => ipcRenderer.invoke('app-restart'),
   exitApp: () => ipcRenderer.invoke('app-exit'),
   onWindowFocus: (callback) => {
     const listener = (_event, focused) => callback(focused)
     ipcRenderer.on('window-focus', listener)
     return () => ipcRenderer.removeListener('window-focus', listener)
   },
-  onSystemGamepads: (callback) => {
-    const listener = (_event, detected) => callback(detected)
-    ipcRenderer.on('system-gamepads-detected', listener)
-    return () => ipcRenderer.removeListener('system-gamepads-detected', listener)
-  },
-  reportXboxDropout: () => ipcRenderer.send('xbox-virtual-dropout'),
-  reportSteamConnected: () => ipcRenderer.send('steam-controller-connected'),
-  onReconnectPrompt: (callback) => {
-    const listener = () => callback()
-    ipcRenderer.on('reconnect-prompt', listener)
-    return () => ipcRenderer.removeListener('reconnect-prompt', listener)
+  onOverlayState: (callback) => {
+    const listener = (_event, active) => callback(active)
+    ipcRenderer.on('overlay-state', listener)
+    return () => ipcRenderer.removeListener('overlay-state', listener)
   },
   onMediaKey: (callback) => {
     const listener = (_event, action) => callback(action)

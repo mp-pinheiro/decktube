@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { Settings } from 'lucide-react'
 import { pushInputLayer } from '../lib/inputLayer'
-import { getInputMode, setInputMode, type InputMode } from '../lib/inputModeStore'
 import { isAuthenticated, logout } from '../lib/oauth'
 import { routes } from '../routePaths'
 
@@ -23,9 +22,6 @@ const SHORTCUTS = [
 
 export default function SettingsButton() {
   const [open, setOpen] = useState(false)
-  const [initialMode] = useState<InputMode>(() => getInputMode())
-  const [mode, setModeState] = useState<InputMode>(initialMode)
-  const [restartPending, setRestartPending] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   const focusIndexRef = useRef(0)
 
@@ -55,11 +51,6 @@ export default function SettingsButton() {
 
   useEffect(() => {
     if (!open) return
-    requestAnimationFrame(() => focusItem(focusIndexRef.current))
-  }, [open, restartPending, focusItem])
-
-  useEffect(() => {
-    if (!open) return
     return pushInputLayer('settings-modal', (intent) => {
       switch (intent) {
         case 'nav_up':
@@ -86,20 +77,9 @@ export default function SettingsButton() {
     })
   }, [open, focusItem])
 
-  const handleModeChange = (next: InputMode) => {
-    if (next === mode) return
-    setInputMode(next)
-    setModeState(next)
-    setRestartPending(next !== initialMode)
-  }
-
   const handleLogout = () => {
     logout()
     window.location.href = routes.home
-  }
-
-  const handleRestart = () => {
-    window.electronAPI?.restartApp()
   }
 
   const handleExit = () => {
@@ -162,39 +142,6 @@ export default function SettingsButton() {
               </section>
 
               <div className="flex-1 min-w-0">
-                <section className="mb-6">
-                  <h3 className="text-sm font-semibold text-zinc-300 mb-2">Input mode</h3>
-                  <p className="text-xs text-zinc-500 mb-3">
-                    Controls how DeckTube polls gamepads. Change requires restart.
-                  </p>
-                  <div className="space-y-2">
-                    <ModeOption
-                      selected={mode === 'strict'}
-                      onSelect={() => handleModeChange('strict')}
-                      title="Strict"
-                      desc="Steam virtual only. Xbox controllers need to be replugged after app launch. No input leak to Steam overlay."
-                    />
-                    <ModeOption
-                      selected={mode === 'lax'}
-                      onSelect={() => handleModeChange('lax')}
-                      title="Lax"
-                      desc="Raw hardware allowed. Xbox works immediately at launch. Hold LB+RB to lock input before opening the Steam overlay."
-                    />
-                  </div>
-                  {restartPending && (
-                    <div className="mt-3 flex items-center justify-between bg-amber-950/40 border border-amber-700/40 rounded-xl px-3 py-2">
-                      <span className="text-xs text-amber-200">Restart required to apply</span>
-                      <button
-                        data-settings-item
-                        onClick={handleRestart}
-                        className="px-3 py-1 bg-amber-600 hover:bg-amber-500 rounded-lg text-xs font-semibold text-white transition-colors focus:outline-none focus:ring-2 focus:ring-amber-400"
-                      >
-                        Restart now
-                      </button>
-                    </div>
-                  )}
-                </section>
-
                 <section>
                   <h3 className="text-sm font-semibold text-zinc-300 mb-2">Account</h3>
                   <div className="space-y-2">
@@ -236,30 +183,5 @@ export default function SettingsButton() {
         document.body
       )}
     </>
-  )
-}
-
-function ModeOption({ selected, onSelect, title, desc }: {
-  selected: boolean
-  onSelect: () => void
-  title: string
-  desc: string
-}) {
-  return (
-    <button
-      data-settings-item
-      onClick={onSelect}
-      className={`w-full text-left p-3 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 ${
-        selected
-          ? 'bg-red-950/30 border-red-600/60'
-          : 'bg-zinc-800/40 border-white/10 hover:bg-zinc-800'
-      }`}
-    >
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-sm font-semibold text-white">{title}</span>
-        <span className={`w-4 h-4 rounded-full border-2 ${selected ? 'border-red-500 bg-red-500' : 'border-zinc-600'}`} />
-      </div>
-      <p className="text-xs text-zinc-400">{desc}</p>
-    </button>
   )
 }

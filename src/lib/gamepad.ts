@@ -1,5 +1,3 @@
-import { getInputMode } from './inputModeStore'
-
 const GAMEPAD_BUTTONS = {
   A: 0,
   B: 1,
@@ -18,9 +16,6 @@ const GAMEPAD_BUTTONS = {
 } as const
 
 type GamepadButtonHandler = (button: string, pressed: boolean, isRepeat?: boolean) => void
-
-// Mode is read once at module load — switching requires app restart.
-const inputMode = getInputMode()
 
 let lockActive = false
 export function setGamepadLockActive(active: boolean) { lockActive = active }
@@ -45,46 +40,109 @@ function dispatchLockProgress(progress: number) {
   window.dispatchEvent(new CustomEvent('input-lock-progress', { detail: { progress } }))
 }
 
-function emitToast(message: string, type: 'info' | 'warning' = 'info') {
-  console.log('[Gamepad] Toast:', message)
-  window.dispatchEvent(new CustomEvent('gamepad-toast', { detail: { message, type } }))
-}
-
 function isSteamController(gamepad: Gamepad): boolean {
   const id = gamepad.id.toLowerCase()
   return id.includes('28de') || id.includes('valve') || id.includes('steam')
 }
 
+const AXIS_THRESHOLD = 0.5
+const LIVE_WINDOW_MS = 1500
+
+function parseId(id: string): string {
+  const v = id.match(/vendor:\s*([0-9a-f]{4})/i)
+  const p = id.match(/product:\s*([0-9a-f]{4})/i)
+  return v && p ? `${v[1].toLowerCase()}:${p[1].toLowerCase()}` : ''
+}
+
+// Returns each pad's button state indexed by the standard GAMEPAD_BUTTONS layout.
+// 8BitDo Ultimate 2 Wireless in DInput/Bluetooth mode (2dc8:6012) has a layout Chromium does not
+// map (gamepad.mapping === ''): A/B are buttons 0/1 but X/Y are 3/4, shoulders 6/7, triggers on
+// axes 4/5, and the D-pad on axes 6/7. Layout from SDL_GameControllerDB, confirmed against
+// on-device logs. Standard-mapped pads (Steam virtual, Xbox) pass through unchanged.
+function normalizeButtons(gp: Gamepad): boolean[] {
+  const out = new Array<boolean>(16).fill(false)
+  const b = gp.buttons
+  if (parseId(gp.id) === '2dc8:6012' && gp.mapping !== 'standard') {
+    const ax = gp.axes
+    const p = (i: number) => b[i]?.pressed ?? false
+    out[GAMEPAD_BUTTONS.A] = p(0)
+    out[GAMEPAD_BUTTONS.B] = p(1)
+    out[GAMEPAD_BUTTONS.X] = p(3)
+    out[GAMEPAD_BUTTONS.Y] = p(4)
+    out[GAMEPAD_BUTTONS.LB] = p(6)
+    out[GAMEPAD_BUTTONS.RB] = p(7)
+    out[GAMEPAD_BUTTONS.SELECT] = p(10)
+    out[GAMEPAD_BUTTONS.START] = p(11)
+    out[GAMEPAD_BUTTONS.LT] = (ax[5] ?? -1) > AXIS_THRESHOLD
+    out[GAMEPAD_BUTTONS.RT] = (ax[4] ?? -1) > AXIS_THRESHOLD
+    const dx = ax[6] ?? 0
+    const dy = ax[7] ?? 0
+    out[GAMEPAD_BUTTONS.DPAD_LEFT] = dx < -AXIS_THRESHOLD
+    out[GAMEPAD_BUTTONS.DPAD_RIGHT] = dx > AXIS_THRESHOLD
+    out[GAMEPAD_BUTTONS.DPAD_UP] = dy < -AXIS_THRESHOLD
+    out[GAMEPAD_BUTTONS.DPAD_DOWN] = dy > AXIS_THRESHOLD
+    return out
+  }
+  for (let i = 0; i < out.length; i++) out[i] = b[i]?.pressed ?? false
+  return out
+}
+
+// Liveness drives steam-vs-raw selection. A pad is "live" if a button is held or changed within
+// LIVE_WINDOW_MS. Driven by real button activity (not gamepad.timestamp), so it doesn't depend on
+// Chromium's idle-timestamp behaviour.
+const liveSnapshot = new Map<number, boolean[]>()
+const lastInputAt = new Map<number, number>()
+
+function updateLiveness(pads: Gamepad[], now: number) {
+  for (const gp of pads) {
+    const norm = normalizeButtons(gp)
+    const prev = liveSnapshot.get(gp.index)
+    let active = false
+    for (let i = 0; i < norm.length; i++) {
+      const was = prev ? prev[i] : false
+      if (norm[i] || norm[i] !== was) { active = true; break }
+    }
+    liveSnapshot.set(gp.index, norm)
+    if (active) lastInputAt.set(gp.index, now)
+  }
+}
+
+function isLive(index: number, now: number): boolean {
+  const t = lastInputAt.get(index)
+  return t !== undefined && now - t < LIVE_WINDOW_MS
+}
+
+let rawFallbackActive = false
+function setRawFallback(active: boolean) {
+  if (active !== rawFallbackActive) {
+    rawFallbackActive = active
+    console.log('[Gamepad] raw-fallback', active ? 'engaged — reading controller Steam left unvirtualized' : 'released')
+  }
+}
+
 function filterGamepads(raw: (Gamepad | null)[]): Gamepad[] {
+  const now = performance.now()
   const all: Gamepad[] = []
   const steam: Gamepad[] = []
+  const rawPads: Gamepad[] = []
   for (const gp of raw) {
     if (!gp) continue
     all.push(gp)
-    if (isSteamController(gp)) {
-      steam.push(gp)
-      if (gp.timestamp > maxSteamTimestamp) maxSteamTimestamp = gp.timestamp
-    }
+    if (isSteamController(gp)) steam.push(gp)
+    else rawPads.push(gp)
   }
-
-  // Lax mode: always poll everything including raw hardware. User is expected to
-  // engage the input lock (Select → LB+RB) before opening the Steam overlay.
-  if (inputMode === 'lax') return all
+  updateLiveness(all, now)
 
   if (steam.length === 0) return all
 
-  // After focus restore, include raw hardware until a Steam virtual proves it's alive.
-  // This handles: after switching to another game and back, the Steam virtual may be stale
-  // (Steam routed it to the other game) while raw hardware still has active input.
-  if (focusGraceActive) {
-    const currentMax = Math.max(...steam.map(gp => gp.timestamp))
-    if (currentMax > steamTimestampAtBlur) {
-      focusGraceActive = false
-      return steam
-    }
-    return all
-  }
-
+  // Prefer the Steam virtual while it's the controller in use: it's standard-mapped and goes silent
+  // under the Steam overlay (no input leak). But when the live controller is a raw pad Steam never
+  // virtualized — an external controller placed first in Steam's controller order takes slot 0, gets
+  // the Desktop Layout, and is left as a raw device while the idle virtual belongs to the built-in
+  // pad — fall back to the raw pad so it works without reordering controllers in Steam.
+  if (steam.some(gp => isLive(gp.index, now))) { setRawFallback(false); return steam }
+  if (rawPads.some(gp => isLive(gp.index, now))) { setRawFallback(true); return rawPads }
+  setRawFallback(false)
   return steam
 }
 
@@ -107,19 +165,8 @@ const buttonHoldState = new Map<string, HoldState>()
 
 let wasFocused = true
 let windowFocused = true
+let overlayActive = false
 let windowFocusInitialised = false
-let hadGamepads = false
-let restartAttempted = false
-let gamepadLossTimer: ReturnType<typeof setTimeout> | null = null
-let initialSetupDone = false
-let initialSetupTimer: ReturnType<typeof setTimeout> | null = null
-let systemGamepadsDetected = false
-let xboxRecoveryActive = false
-let xboxRecoveryTimer: ReturnType<typeof setTimeout> | null = null
-let rearmTimer: ReturnType<typeof setTimeout> | null = null
-let maxSteamTimestamp = 0
-let steamTimestampAtBlur = 0
-let focusGraceActive = false
 const knownIndices = new Set<number>()
 
 function initWindowFocusTracking() {
@@ -132,18 +179,28 @@ function initWindowFocusTracking() {
       if (!focused) {
         previousButtonStates.clear()
         buttonHoldState.clear()
-        steamTimestampAtBlur = maxSteamTimestamp
         console.log('[Gamepad] Window blurred – suppressing input')
       } else {
-        focusGraceActive = true
-        console.log('[Gamepad] Window focused – raw hardware fallback active until Steam responds')
+        console.log('[Gamepad] Window focused')
       }
+    })
+  }
+  // Steam overlay / QAM open: the main process detects it via gamescope focus atoms. Suppress input
+  // while it's up — a raw (unvirtualized) controller keeps emitting and would leak into the app behind it.
+  if (api?.onOverlayState) {
+    api.onOverlayState((active: boolean) => {
+      overlayActive = active
+      if (active) {
+        previousButtonStates.clear()
+        buttonHoldState.clear()
+      }
+      console.log('[Gamepad] Steam overlay', active ? 'open – suppressing input' : 'closed')
     })
   }
 }
 
 function pollGamepads() {
-  const isFocused = !document.hidden && document.hasFocus() && windowFocused
+  const isFocused = !document.hidden && document.hasFocus() && windowFocused && !overlayActive
 
   if (!isFocused) {
     if (wasFocused) {
@@ -180,10 +237,11 @@ function pollGamepads() {
 
   for (const gamepad of gamepads) {
     const prevStates = previousButtonStates.get(gamepad.index) ?? []
+    const norm = normalizeButtons(gamepad)
 
     // Runs regardless of lockActive so unlock works.
-    const lbPressed = gamepad.buttons[GAMEPAD_BUTTONS.LB]?.pressed ?? false
-    const rbPressed = gamepad.buttons[GAMEPAD_BUTTONS.RB]?.pressed ?? false
+    const lbPressed = norm[GAMEPAD_BUTTONS.LB]
+    const rbPressed = norm[GAMEPAD_BUTTONS.RB]
     const bothHeld = lbPressed && rbPressed
     const holdStartedAt = lockHoldStart.get(gamepad.index)
 
@@ -206,8 +264,8 @@ function pollGamepads() {
     }
 
     if (lockActive) {
-      gamepad.buttons.forEach((button, index) => {
-        prevStates[index] = button.pressed
+      norm.forEach((pressed, index) => {
+        prevStates[index] = pressed
       })
       previousButtonStates.set(gamepad.index, prevStates)
       continue
@@ -229,12 +287,11 @@ function pollGamepads() {
       rbPending.delete(gamepad.index)
     }
 
-    gamepad.buttons.forEach((button, index) => {
+    norm.forEach((isPressed, index) => {
       if (bothHeld && (index === GAMEPAD_BUTTONS.LB || index === GAMEPAD_BUTTONS.RB)) {
-        prevStates[index] = button.pressed
+        prevStates[index] = isPressed
         return
       }
-      const isPressed = button.pressed
       const wasPressed = prevStates[index] || false
       const holdKey = `${gamepad.index}-${index}`
 
@@ -297,23 +354,6 @@ export function initGamepad(handler: GamepadButtonHandler) {
     animationFrameId = requestAnimationFrame(pollGamepads)
   }
 
-  if (!initialSetupTimer) {
-    initialSetupTimer = setTimeout(() => { initialSetupDone = true }, 2000)
-  }
-
-  const api = window.electronAPI
-  const cleanupSystemGamepads = api?.onSystemGamepads?.((detected: boolean) => {
-    systemGamepadsDetected = detected
-    if (detected && filterGamepads([...navigator.getGamepads()]).length === 0) {
-      console.log('[Gamepad] System gamepads detected but Gamepad API not yet active')
-      window.dispatchEvent(new CustomEvent('gamepad-activation-needed'))
-    }
-  })
-  const cleanupReconnectPrompt = api?.onReconnectPrompt?.(() => {
-    console.log('[Gamepad] Xbox auto-reset failed, prompting user to reconnect')
-    window.dispatchEvent(new CustomEvent('gamepad-reconnect-needed'))
-  })
-
   // NOTE: Chromium may not fire gamepadconnected for already-connected gamepads.
   // Probe and dispatch synthetic events so InputProvider's bootstrap fires.
   let startupProbeCount = 0
@@ -335,84 +375,19 @@ export function initGamepad(handler: GamepadButtonHandler) {
   }, 500)
   requestAnimationFrame(emitForExisting)
 
-  const connectTimestamps = new Map<number, number>()
-
   const handleConnect = (e: GamepadEvent) => {
     if (knownIndices.has(e.gamepad.index)) return
     knownIndices.add(e.gamepad.index)
-    connectTimestamps.set(e.gamepad.index, Date.now())
-    hadGamepads = true
-    if (gamepadLossTimer) { clearTimeout(gamepadLossTimer); gamepadLossTimer = null }
     const isSteam = isSteamController(e.gamepad)
     console.log('[Gamepad] Connected:', e.gamepad.id, 'at index', e.gamepad.index, isSteam ? '(steam)' : '(raw hardware)')
-    if (isSteam) {
-      window.dispatchEvent(new CustomEvent('gamepad-reconnected'))
-      if (xboxRecoveryActive) {
-        xboxRecoveryActive = false
-        if (xboxRecoveryTimer) { clearTimeout(xboxRecoveryTimer); xboxRecoveryTimer = null }
-      }
-      // Delay re-arm so transient churn (game launch, Steam reassigning) doesn't re-enable recovery
-      if (rearmTimer) clearTimeout(rearmTimer)
-      rearmTimer = setTimeout(() => {
-        rearmTimer = null
-        api?.reportSteamConnected?.()
-      }, 5000)
-    }
-    if (initialSetupDone && !isSteam) {
-      emitToast('Controller connected')
-    }
-    if (systemGamepadsDetected) {
-      window.dispatchEvent(new CustomEvent('gamepad-activated'))
-    }
   }
 
   const handleDisconnect = (e: GamepadEvent) => {
     knownIndices.delete(e.gamepad.index)
-    const connectTime = connectTimestamps.get(e.gamepad.index)
-    connectTimestamps.delete(e.gamepad.index)
-
-    // Cancel pending re-arm if a Steam controller disconnects — it wasn't stable
-    if (isSteamController(e.gamepad) && rearmTimer) {
-      clearTimeout(rearmTimer)
-      rearmTimer = null
-    }
-
-    // Detect Xbox ephemeral virtual: Steam controller that lived < 1s
-    // Only trigger when focused — background churn from Steam reassigning virtuals to another game is expected.
-    // Skipped entirely in lax mode — raw hardware is already being polled, no recovery needed.
-    if (inputMode === 'strict' && windowFocused && isSteamController(e.gamepad) && connectTime && (Date.now() - connectTime) < 1000) {
-      console.log('[Gamepad] Steam virtual dropout detected (lived', Date.now() - connectTime, 'ms) — requesting Xbox recovery')
-      xboxRecoveryActive = true
-      if (xboxRecoveryTimer) clearTimeout(xboxRecoveryTimer)
-      xboxRecoveryTimer = setTimeout(() => { xboxRecoveryActive = false }, 30000)
-      api?.reportXboxDropout?.()
-    }
-
     console.log('[Gamepad] Disconnected:', e.gamepad.id, 'at index', e.gamepad.index)
     previousButtonStates.delete(e.gamepad.index)
     for (const key of buttonHoldState.keys()) {
       if (key.startsWith(`${e.gamepad.index}-`)) buttonHoldState.delete(key)
-    }
-
-    if (initialSetupDone && !isSteamController(e.gamepad)) {
-      emitToast('Controller disconnected')
-    }
-
-    const remaining = navigator.getGamepads().some(gp => gp !== null)
-    if (hadGamepads && !remaining && !restartAttempted && !xboxRecoveryActive) {
-      console.log('[Gamepad] All gamepads lost – will restart in 15s if none reconnect')
-      gamepadLossTimer = setTimeout(() => {
-        if (!navigator.getGamepads().some(gp => gp !== null)) {
-          emitToast('No controller detected — restarting in 10s...', 'warning')
-          gamepadLossTimer = setTimeout(() => {
-            if (!navigator.getGamepads().some(gp => gp !== null)) {
-              console.log('[Gamepad] Restarting app to recover gamepad')
-              restartAttempted = true
-              window.electronAPI?.restartApp()
-            }
-          }, 10000)
-        }
-      }, 5000)
     }
   }
 
@@ -421,10 +396,6 @@ export function initGamepad(handler: GamepadButtonHandler) {
 
   return () => {
     clearInterval(startupProbe)
-    if (initialSetupTimer) { clearTimeout(initialSetupTimer); initialSetupTimer = null }
-    if (rearmTimer) { clearTimeout(rearmTimer); rearmTimer = null }
-    cleanupSystemGamepads?.()
-    cleanupReconnectPrompt?.()
     buttonHandlers = buttonHandlers.filter(h => h !== handler)
     if (buttonHandlers.length === 0 && animationFrameId) {
       cancelAnimationFrame(animationFrameId)
