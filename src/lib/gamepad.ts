@@ -158,7 +158,7 @@ const DPAD_BUTTONS: Set<number> = new Set([
   GAMEPAD_BUTTONS.DPAD_LEFT, GAMEPAD_BUTTONS.DPAD_RIGHT,
 ])
 const REPEAT_INITIAL_DELAY = 400
-const REPEAT_INTERVAL = 150
+const REPEAT_INTERVAL = 120
 
 interface HoldState { lastEmit: number; repeating: boolean }
 const buttonHoldState = new Map<string, HoldState>()

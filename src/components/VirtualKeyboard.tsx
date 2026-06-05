@@ -1,8 +1,6 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import Keyboard from 'react-simple-keyboard'
-import keyNavigation from 'simple-keyboard-key-navigation'
 import { useInputContext } from '../contexts/InputContext'
-import type { SimpleKeyboard } from 'react-simple-keyboard'
 
 const LAYOUT = {
   default: [
@@ -10,7 +8,7 @@ const LAYOUT = {
     'q w e r t y u i o p',
     'a s d f g h j k l',
     'z x c v b n m . - _',
-    '{space} {bksp} {enter}',
+    '{bksp} {space} {enter}',
   ],
 }
 
@@ -19,6 +17,10 @@ const DISPLAY: Record<string, string> = {
   '{bksp}': 'DELETE',
   '{enter}': 'SEARCH',
 }
+
+const GRID = LAYOUT.default.map(row => row.split(' '))
+const START = { row: 1, col: 0 }
+const ratioOf = (row: number, col: number) => (GRID[row].length > 1 ? col / (GRID[row].length - 1) : 0)
 
 export default function VirtualKeyboard() {
   const {
@@ -29,44 +31,90 @@ export default function VirtualKeyboard() {
     closeVirtualKeyboard,
   } = useInputContext()
 
-  const keyboardRef = useRef<SimpleKeyboard | null>(null)
   const searchTextRef = useRef(searchText)
   useEffect(() => { searchTextRef.current = searchText }, [searchText])
 
+  const posRef = useRef({ ...START })
+  // Anchor column (0..1) preserved across vertical moves so traversing rows of different widths stays
+  // aligned (b → down to SPACE → down lands on the key above b). Updated only on horizontal moves.
+  const anchorRef = useRef(ratioOf(START.row, START.col))
+  const [activeButton, setActiveButton] = useState(GRID[START.row][START.col])
+
+  const moveTo = useCallback((row: number, col: number) => {
+    const r = Math.max(0, Math.min(row, GRID.length - 1))
+    const c = Math.max(0, Math.min(col, GRID[r].length - 1))
+    posRef.current = { row: r, col: c }
+    setActiveButton(GRID[r][c])
+  }, [])
+
+  // Horizontal wraps around row edges and re-anchors the column.
+  const stepHorizontal = useCallback((dir: -1 | 1) => {
+    const { row } = posRef.current
+    const len = GRID[row].length
+    const col = (posRef.current.col + dir + len) % len
+    anchorRef.current = ratioOf(row, col)
+    moveTo(row, col)
+  }, [moveTo])
+
+  // Vertical wraps top/bottom and lands on the anchored column in the next row.
+  const stepVertical = useCallback((dir: -1 | 1) => {
+    const next = (posRef.current.row + dir + GRID.length) % GRID.length
+    moveTo(next, Math.round(anchorRef.current * (GRID[next].length - 1)))
+  }, [moveTo])
+
+  // Reset to a known key each time the keyboard opens (deferred a frame to avoid a sync effect render).
+  useEffect(() => {
+    if (!virtualKeyboardOpen) return
+    const id = requestAnimationFrame(() => {
+      anchorRef.current = ratioOf(START.row, START.col)
+      moveTo(START.row, START.col)
+    })
+    return () => cancelAnimationFrame(id)
+  }, [virtualKeyboardOpen, moveTo])
+
   const syncInput = useCallback((text: string) => {
+    searchTextRef.current = text
     setSearchText(text)
-    keyboardRef.current?.setInput(text)
   }, [setSearchText])
 
+  const pressButton = useCallback((button: string) => {
+    if (button === '{enter}') submitSearch()
+    else if (button === '{bksp}') syncInput(searchTextRef.current.slice(0, -1))
+    else if (button === '{space}') syncInput(searchTextRef.current + ' ')
+    else syncInput(searchTextRef.current + button)
+  }, [submitSearch, syncInput])
+
+  const pressActive = useCallback(() => {
+    const { row, col } = posRef.current
+    pressButton(GRID[row][col])
+  }, [pressButton])
+
+  // One move per keydown — the held-direction cadence is the gamepad/OS key repeat, kept snappy.
   useEffect(() => {
     if (!virtualKeyboardOpen) return
 
     const handleKeydown = (e: KeyboardEvent) => {
-      const nav = keyboardRef.current?.modules?.keyNavigation
-      if (!nav) return
-
       e.stopPropagation()
-
       switch (e.key) {
         case 'ArrowUp':
           e.preventDefault()
-          nav.up()
+          stepVertical(-1)
           break
         case 'ArrowDown':
           e.preventDefault()
-          nav.down()
+          stepVertical(1)
           break
         case 'ArrowLeft':
           e.preventDefault()
-          nav.left()
+          stepHorizontal(-1)
           break
         case 'ArrowRight':
           e.preventDefault()
-          nav.right()
+          stepHorizontal(1)
           break
         case 'Enter':
           e.preventDefault()
-          nav.press()
+          pressActive()
           break
         case 'Escape':
           e.preventDefault()
@@ -87,12 +135,12 @@ export default function VirtualKeyboard() {
 
     window.addEventListener('keydown', handleKeydown, true)
     return () => window.removeEventListener('keydown', handleKeydown, true)
-  }, [virtualKeyboardOpen, closeVirtualKeyboard, syncInput])
+  }, [virtualKeyboardOpen, stepVertical, stepHorizontal, pressActive, closeVirtualKeyboard, syncInput])
 
   useEffect(() => {
     if (!virtualKeyboardOpen) return
 
-    const handlePress = () => keyboardRef.current?.modules?.keyNavigation?.press()
+    const handlePress = () => pressActive()
     const handleBackspace = () => syncInput(searchTextRef.current.slice(0, -1))
     const handleSpace = () => syncInput(searchTextRef.current + ' ')
     const handleSubmit = () => submitSearch()
@@ -108,17 +156,7 @@ export default function VirtualKeyboard() {
       window.removeEventListener('vk-space', handleSpace)
       window.removeEventListener('vk-submit', handleSubmit)
     }
-  }, [virtualKeyboardOpen, syncInput, submitSearch])
-
-  const handleChange = useCallback((input: string) => {
-    setSearchText(input)
-  }, [setSearchText])
-
-  const handleKeyPress = useCallback((button: string) => {
-    if (button === '{enter}') {
-      submitSearch()
-    }
-  }, [submitSearch])
+  }, [virtualKeyboardOpen, pressActive, syncInput, submitSearch])
 
   if (!virtualKeyboardOpen) return null
 
@@ -135,14 +173,11 @@ export default function VirtualKeyboard() {
         </div>
 
         <Keyboard
-          keyboardRef={(r: SimpleKeyboard) => { keyboardRef.current = r }}
           layout={LAYOUT}
           display={DISPLAY}
-          onChange={handleChange}
-          onKeyPress={handleKeyPress}
+          onKeyPress={pressButton}
           theme="simple-keyboard hg-theme-default vk-dark"
-          modules={[keyNavigation]}
-          enableKeyNavigation
+          buttonTheme={[{ class: 'hg-keyMarker', buttons: activeButton }]}
           disableCaretPositioning
         />
 
