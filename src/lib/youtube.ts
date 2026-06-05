@@ -304,87 +304,75 @@ function extractVideosFromRenderers(data: unknown): YouTubeVideo[] {
         if (video) videos.push(video)
       }
     } else if ('lockupViewModel' in item) {
-      const lockup = (item as { lockupViewModel: { contentId?: string; contentType?: string; thumbnail?: unknown; contentImage?: unknown; metadata?: unknown; rendererContext?: any } }).lockupViewModel
-      if (lockup.contentType === 'LOCKUP_CONTENT_TYPE_SHORTS') return
-      if (lockup.contentId?.startsWith('shorts:')) return
-      if (lockup.rendererContext?.commandContext?.onTap?.innertubeCommand?.reelWatchEndpoint) return
-      if (lockup.contentId?.startsWith('video:')) {
-        const videoId = lockup.contentId.replace('video:', '')
-        const thumbnailContainer = (lockup.contentImage ?? lockup.thumbnail) as { thumbnailViewModel?: { image?: { sources?: Array<{ url?: string; width?: number; height?: number }> } } }
-        const sources = thumbnailContainer?.thumbnailViewModel?.image?.sources ?? []
-        const thumbnails: YouTubeThumbnail[] = sources
-          .filter(s => s.url)
-          .map(s => ({ url: s.url as string, width: s.width ?? 0, height: s.height ?? 0 }))
-        if (isVerticalThumbnail(thumbnails)) return
-        const metadata = lockup.metadata as { contentMetadataViewModel?: { title?: { content?: string }; subtitle?: unknown } }
+      const lockup = item.lockupViewModel as any
+      // Only videos. Channels/playlists/shorts carry their own contentType and are skipped.
+      if (lockup.contentType !== 'LOCKUP_CONTENT_TYPE_VIDEO') return
 
-        const title = metadata?.contentMetadataViewModel?.title?.content || ''
-        const thumbnailUrl = sources[0]?.url || ''
+      const videoId: string = lockup.contentId
+        || lockup.rendererContext?.commandContext?.onTap?.innertubeCommand?.watchEndpoint?.videoId
+        || ''
+      if (!videoId) return
 
-        let channelName = ''
-        let channelId = ''
-        let duration: number | undefined
-        let viewCount: number | undefined
-        let publishedTimeText = ''
-        let hasWatchingText = false
-        const subtitle = metadata?.contentMetadataViewModel?.subtitle as any
-        if (subtitle && typeof subtitle === 'object' && subtitle.runs) {
-          for (const run of subtitle.runs) {
-            const text = run.text?.trim()
-            if (!text || text === '•') continue
+      const tvm = (lockup.contentImage ?? lockup.thumbnail)?.thumbnailViewModel
+      const sources = (tvm?.image?.sources ?? []) as Array<{ url?: string; width?: number; height?: number }>
+      const thumbnails: YouTubeThumbnail[] = sources
+        .filter(s => s.url)
+        .map(s => ({ url: s.url as string, width: s.width ?? 0, height: s.height ?? 0 }))
+      if (isVerticalThumbnail(thumbnails)) return
 
-            const browseId = run.onTap?.innertubeCommand?.browseEndpoint?.browseId
-                          || run.navigationEndpoint?.browseEndpoint?.browseId
-            if (browseId && browseId.startsWith('UC')) {
-              channelId = browseId
-              channelName = text
-              continue
-            }
+      const lmvm = lockup.metadata?.lockupMetadataViewModel
+      const title: string = lmvm?.title?.content || ''
 
-            const durationMatch = text.match(/(\d+:\d{2}(?::\d{2})?)/)
-            if (durationMatch) {
-              duration = parseDuration(durationMatch[1])
-              continue
-            }
-
-            if (text.includes('watching')) {
-              hasWatchingText = true
-              viewCount = parseViewCount(text)
-              continue
-            }
-
-            if (text.includes('views')) {
-              viewCount = parseViewCount(text)
-              continue
-            }
-
-            if (!channelName) {
-              channelName = text
-              continue
-            }
-
-            if (!publishedTimeText && text.length > 1) {
-              publishedTimeText = text
-            }
+      // Duration lives in the thumbnail overlay badge, e.g. "1:11:57".
+      let duration: number | undefined
+      for (const overlay of (tvm?.overlays ?? [])) {
+        const badges = overlay?.thumbnailBottomOverlayViewModel?.badges
+          ?? overlay?.thumbnailOverlayBadgeViewModel?.thumbnailBadges
+          ?? []
+        for (const badge of badges) {
+          const text = badge?.thumbnailBadgeViewModel?.text
+          if (typeof text === 'string') {
+            const m = text.match(/(\d+:\d{2}(?::\d{2})?)/)
+            if (m) duration = parseDuration(m[1])
           }
-        } else if (typeof subtitle === 'string') {
-          channelName = subtitle.split('•')[0]?.trim() || ''
         }
+      }
 
-        if (hasWatchingText) return
-
-        if (videoId && title) {
-          videos.push({
-            videoId,
-            title,
-            thumbnails: thumbnailUrl ? [{ url: thumbnailUrl, width: 320, height: 180 }] : [],
-            channelName,
-            channelId,
-            duration,
-            viewCount,
-            publishedTimeText: publishedTimeText || undefined,
-          })
+      // Channel / views / published time come from the metadata rows.
+      let channelName = ''
+      let channelId = ''
+      let viewCount: number | undefined
+      let publishedTimeText = ''
+      let isLive = false
+      for (const row of (lmvm?.metadata?.contentMetadataViewModel?.metadataRows ?? [])) {
+        for (const part of (row?.metadataParts ?? [])) {
+          const text: string = part?.text?.content?.trim() || ''
+          if (!text || text === '•') continue
+          const browseId = part?.text?.commandRuns?.[0]?.onTap?.innertubeCommand?.browseEndpoint?.browseId
+          if (typeof browseId === 'string' && browseId.startsWith('UC')) {
+            channelId = browseId
+            channelName = text
+            continue
+          }
+          if (text.includes('watching')) { isLive = true; viewCount = parseViewCount(text); continue }
+          if (text.includes('views')) { viewCount = parseViewCount(text); continue }
+          if (!channelName) { channelName = text; continue }
+          if (!publishedTimeText && text.length > 1) { publishedTimeText = text }
         }
+      }
+      if (isLive) return
+
+      if (videoId && title) {
+        videos.push({
+          videoId,
+          title,
+          thumbnails,
+          channelName,
+          channelId,
+          duration,
+          viewCount,
+          publishedTimeText: publishedTimeText || undefined,
+        })
       }
     } else if ('tileRenderer' in item) {
       const tile = item.tileRenderer as any
