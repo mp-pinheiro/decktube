@@ -50,13 +50,3 @@ npm run build  # Build for production
 ```
 
 **IMPORTANT:** Vite dev server auto-restarts on file changes. NEVER ask user to restart - just refresh browser. Always check if server is already running on port 5173 before starting.
-
-## Version Control
-
-This project uses jj (jujutsu), not git. See https://docs.jj-vcs.dev/latest/
-
-Common commands:
-- `jj status` - View working copy status
-- `jj new` - Create new change
-- `jj describe` - Edit change description
-- `jj log` - View change history
