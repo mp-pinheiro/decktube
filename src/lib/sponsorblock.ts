@@ -1,5 +1,5 @@
 const API_BASE = 'https://sponsor.ajay.app'
-const CATEGORIES = ['sponsor', 'selfpromo', 'interaction', 'intro', 'outro', 'preview', 'filler']
+const CATEGORIES = ['sponsor', 'selfpromo', 'interaction', 'intro', 'outro', 'preview']
 
 export interface SponsorSegment {
   segment: [number, number]
@@ -43,7 +43,6 @@ export function getCategoryLabel(category: string): string {
     intro: 'intro',
     outro: 'outro',
     preview: 'preview',
-    filler: 'filler',
   }
   return labels[category] || category
 }
