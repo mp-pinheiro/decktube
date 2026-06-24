@@ -947,7 +947,9 @@ export async function getChannelVideos(channelId: string): Promise<YouTubeVideo[
     }, true)) as Record<string, unknown>
 
     const videos = extractVideosFromRenderers(response)
-    return videos.map(v => ({ ...v, type: 'video' as const }))
+    return videos
+      .map(v => ({ ...v, type: 'video' as const }))
+      .sort((a, b) => parsePublishedAgeSeconds(a.publishedTimeText) - parsePublishedAgeSeconds(b.publishedTimeText))
   } catch (error) {
     console.error('Error fetching channel videos:', error)
     return []
