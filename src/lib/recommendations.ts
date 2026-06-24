@@ -6,9 +6,11 @@ import { getWatchedSet } from './watchedStore'
 const SEED_COUNT = 12
 
 // Builds recommendations from DeckTube's own watch history, independent of YouTube's account feed.
-// Takes the most recently watched videos as seeds, pulls YouTube's per-video related list for each,
-// and ranks candidates by how often they recur across seeds, weighted by how recently the seed was
-// watched. Anything already in history or marked watched is filtered out.
+// Takes the most recently watched videos as seeds and pulls each one's anonymous (topical) related
+// list — anonymous so YouTube anchors on the source video's topic rather than serving the
+// account-personalized "up next" rail, which otherwise mirrors the home feed. Candidates are ranked
+// by how often they recur across seeds (weighted by seed recency) and boosted when they come from a
+// channel the user actually watches. Anything already in history or marked watched is filtered out.
 export async function getHistoryRecommendations(): Promise<YouTubeVideo[]> {
   const history = getHistory()
   if (history.length === 0) return []
@@ -17,8 +19,11 @@ export async function getHistoryRecommendations(): Promise<YouTubeVideo[]> {
   const historyIds = new Set(history.map(v => v.videoId))
   const watched = getWatchedSet()
 
+  // Channels the user watches, for affinity boosting.
+  const historyChannels = new Set(history.map(v => v.channelId).filter(Boolean))
+
   const related = await Promise.all(
-    seeds.map(seed => getRelatedVideos(seed.videoId).catch(() => [] as YouTubeVideo[]))
+    seeds.map(seed => getRelatedVideos(seed.videoId, true).catch(() => [] as YouTubeVideo[]))
   )
 
   const scores = new Map<string, { video: YouTubeVideo; score: number }>()
@@ -37,6 +42,12 @@ export async function getHistoryRecommendations(): Promise<YouTubeVideo[]> {
   })
 
   return Array.from(scores.values())
+    // Double the score of videos from channels the user watches so familiar channels surface, while
+    // topically related videos from new channels still come through on recurrence alone.
+    .map(entry => ({
+      video: entry.video,
+      score: historyChannels.has(entry.video.channelId) ? entry.score * 2 : entry.score,
+    }))
     .sort((a, b) => b.score - a.score)
     .map(entry => entry.video)
 }

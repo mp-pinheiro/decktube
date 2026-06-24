@@ -532,12 +532,12 @@ function extractContinuationToken(data: unknown): string | null {
   return tokens.length > 0 ? tokens[tokens.length - 1] : null
 }
 
-async function youtubeiRequest<T>(endpoint: string, body: YouTubeiRequest, useTvClient = false): Promise<T> {
-  const token = await getToken()
+async function youtubeiRequest<T>(endpoint: string, body: YouTubeiRequest, useTvClient = false, skipAuth = false): Promise<T> {
+  const token = skipAuth ? null : await getToken()
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   }
-  
+
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
@@ -689,12 +689,15 @@ export async function getVideoDetails(videoId: string): Promise<YouTubeVideo | n
   }
 }
 
-export async function getRelatedVideos(videoId: string): Promise<YouTubeVideo[]> {
+// When anonymous, the request omits the OAuth token so YouTube returns related videos anchored to
+// the source video's topic/co-visitation rather than the account-personalized "up next" rail (which
+// mirrors the home feed). History-based recommendations use the anonymous path for topical results.
+export async function getRelatedVideos(videoId: string, anonymous = false): Promise<YouTubeVideo[]> {
   try {
     const response = (await youtubeiRequest('next', {
       context: { client: TV_CLIENT_CONFIG },
       videoId,
-    }, true)) as Record<string, unknown>
+    }, true, anonymous)) as Record<string, unknown>
 
     const videos = extractVideosFromRenderers(response)
     return videos.filter(v => v.videoId !== videoId)
