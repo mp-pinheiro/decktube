@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { getHomeFeed, getHomeFeedContinuation, getSubscriptionsFeed, getSubscriptionsFeedContinuation, parsePublishedAgeSeconds } from '../lib/youtube'
 import type { YouTubeVideo } from '../lib/youtube'
 import { isAuthenticated } from '../lib/oauth'
+import { getHistoryRecommendations } from '../lib/recommendations'
 import { getHistory, removeFromHistory, clearHistory } from '../lib/historyStore'
 import { getWatchedSet, markWatched, markUnwatched, isWatched } from '../lib/watchedStore'
 import { forceBootstrapNavFocus } from '../lib/focusManager'
@@ -13,6 +14,7 @@ import TabBar from '../components/TabBar'
 import ActionMenu from '../components/ActionMenu'
 
 const TABS = [
+  { id: 'home', label: 'Home' },
   { id: 'recommended', label: 'Recommended' },
   { id: 'subscriptions', label: 'Subscriptions' },
   { id: 'history', label: 'History' },
@@ -34,13 +36,16 @@ export default function HomePage() {
   const navigate = useNavigate()
   const { registerActions, unregisterActions } = useInputContext()
   const [restoredState] = useState(() => consumeHomeNavState())
-  const [activeTab, setActiveTab] = useState(restoredState?.activeTab ?? 'recommended')
+  const [activeTab, setActiveTab] = useState(restoredState?.activeTab ?? 'home')
   const pageIndexRef = useRef<Record<string, number>>(
     restoredState ? { [restoredState.activeTab]: restoredState.pageIndex } : {}
   )
   const [tabStates, setTabStates] = useState<Record<string, TabState>>(() => {
     const tabs = restoredState?.tabs
     return {
+      home: tabs?.home
+        ? { videos: tabs.home.videos, continuation: tabs.home.continuation, loading: false, error: null, fetched: true }
+        : emptyTabState(),
       recommended: tabs?.recommended
         ? { videos: tabs.recommended.videos, continuation: tabs.recommended.continuation, loading: false, error: null, fetched: true }
         : emptyTabState(),
@@ -67,6 +72,25 @@ export default function HomePage() {
       navigate('/login', { replace: true })
     }
   }, [navigate])
+
+  const fetchHome = useCallback(async () => {
+    setTabStates(prev => ({
+      ...prev,
+      home: { ...prev.home, loading: true, error: null, fetched: true },
+    }))
+    try {
+      const videos = await getHistoryRecommendations()
+      setTabStates(prev => ({
+        ...prev,
+        home: { ...prev.home, videos, continuation: null, loading: false },
+      }))
+    } catch (err) {
+      setTabStates(prev => ({
+        ...prev,
+        home: { ...prev.home, error: err instanceof Error ? err.message : 'Failed to load recommendations', loading: false },
+      }))
+    }
+  }, [])
 
   const fetchRecommended = useCallback(async () => {
     setTabStates(prev => ({
@@ -114,6 +138,9 @@ export default function HomePage() {
   }, [])
 
   useEffect(() => {
+    if (activeTab === 'home' && !tabStates.home.fetched) {
+      fetchHome()
+    }
     if (activeTab === 'recommended' && !tabStates.recommended.fetched) {
       fetchRecommended()
     }
@@ -123,7 +150,7 @@ export default function HomePage() {
     if (activeTab === 'history') {
       fetchHistory()
     }
-  }, [activeTab, tabStates.recommended.fetched, fetchRecommended, tabStates.subscriptions.fetched, fetchSubscriptions, fetchHistory])
+  }, [activeTab, tabStates.home.fetched, fetchHome, tabStates.recommended.fetched, fetchRecommended, tabStates.subscriptions.fetched, fetchSubscriptions, fetchHistory])
 
   useEffect(() => {
     const onSync = () => {
@@ -137,6 +164,7 @@ export default function HomePage() {
   useEffect(() => {
     const onRefresh = () => {
       setTabStates({
+        home: emptyTabState(),
         recommended: emptyTabState(),
         subscriptions: emptyTabState(),
         history: emptyTabState(),
@@ -205,6 +233,7 @@ export default function HomePage() {
     }
     const ts = tabStatesRef.current
     const tabs: Record<string, { videos: YouTubeVideo[], continuation: string | null }> = {}
+    if (ts.home.fetched) tabs.home = { videos: ts.home.videos, continuation: ts.home.continuation }
     if (ts.recommended.fetched) tabs.recommended = { videos: ts.recommended.videos, continuation: ts.recommended.continuation }
     if (ts.subscriptions.fetched) tabs.subscriptions = { videos: ts.subscriptions.videos, continuation: ts.subscriptions.continuation }
     saveHomeNavState({
@@ -290,6 +319,20 @@ export default function HomePage() {
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <TabBar tabs={TABS} activeTab={activeTab} onTabChange={setActiveTab} />
+
+      {activeTab === 'home' && (
+        <PagedVideoGrid
+          key="home"
+          videos={state.videos.filter(v => !watchedIds.has(v.videoId))}
+          loading={state.loading}
+          error={state.error}
+          continuation={null}
+          emptyMessage="Watch some videos to get recommendations"
+          initialPageIndex={restoredState?.activeTab === 'home' ? restoredState.pageIndex : undefined}
+          initialFocusIndex={restoredState?.activeTab === 'home' ? restoredState.focusIndex : undefined}
+          onPageChange={(idx) => { pageIndexRef.current['home'] = idx }}
+        />
+      )}
 
       {activeTab === 'recommended' && (
         <PagedVideoGrid
