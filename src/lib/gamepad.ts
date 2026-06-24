@@ -56,9 +56,11 @@ function parseId(id: string): string {
 
 // Returns each pad's button state indexed by the standard GAMEPAD_BUTTONS layout.
 // 8BitDo Ultimate 2 Wireless in DInput/Bluetooth mode (2dc8:6012) has a layout Chromium does not
-// map (gamepad.mapping === ''): A/B are buttons 0/1 but X/Y are 3/4, shoulders 6/7, triggers on
-// axes 4/5, and the D-pad on axes 6/7. Layout from SDL_GameControllerDB, confirmed against
-// on-device logs. Standard-mapped pads (Steam virtual, Xbox) pass through unchanged.
+// map (gamepad.mapping === ''): A/B are buttons 0/1 but X/Y are 3/4, shoulders 6/7, and the D-pad
+// on axes 6/7. Triggers report two ways depending on their mode: analog pulls land on axes 4/5,
+// while digital ("button") trigger mode lands on buttons 8/9 — read both so LT/RT work either way.
+// Layout from SDL_GameControllerDB, confirmed against on-device logs. Standard-mapped pads
+// (Steam virtual, Xbox) pass through unchanged.
 function normalizeButtons(gp: Gamepad): boolean[] {
   const out = new Array<boolean>(16).fill(false)
   const b = gp.buttons
@@ -73,8 +75,8 @@ function normalizeButtons(gp: Gamepad): boolean[] {
     out[GAMEPAD_BUTTONS.RB] = p(7)
     out[GAMEPAD_BUTTONS.SELECT] = p(10)
     out[GAMEPAD_BUTTONS.START] = p(11)
-    out[GAMEPAD_BUTTONS.LT] = (ax[5] ?? -1) > AXIS_THRESHOLD
-    out[GAMEPAD_BUTTONS.RT] = (ax[4] ?? -1) > AXIS_THRESHOLD
+    out[GAMEPAD_BUTTONS.LT] = (ax[5] ?? -1) > AXIS_THRESHOLD || p(8)
+    out[GAMEPAD_BUTTONS.RT] = (ax[4] ?? -1) > AXIS_THRESHOLD || p(9)
     const dx = ax[6] ?? 0
     const dy = ax[7] ?? 0
     out[GAMEPAD_BUTTONS.DPAD_LEFT] = dx < -AXIS_THRESHOLD
