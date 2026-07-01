@@ -1,17 +1,17 @@
-import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getHomeFeed, getHomeFeedContinuation, getSubscriptionsFeed, getSubscriptionsFeedContinuation, parsePublishedAgeSeconds } from '../lib/youtube'
 import type { YouTubeVideo } from '../lib/youtube'
 import { isAuthenticated } from '../lib/oauth'
 import { getHistoryRecommendations } from '../lib/recommendations'
 import { getHistory, removeFromHistory, clearHistory } from '../lib/historyStore'
-import { getWatchedSet, markWatched, markUnwatched, isWatched } from '../lib/watchedStore'
-import { forceBootstrapNavFocus } from '../lib/focusManager'
+import { getWatchedSet } from '../lib/watchedStore'
 import { useInputContext } from '../contexts/InputContext'
+import { useVideoCardActions } from '../hooks/useVideoCardActions'
+import type { ActionMenuItem } from '../components/ActionMenu'
 import { saveHomeNavState, consumeHomeNavState } from '../lib/homeNavState'
 import PagedVideoGrid from '../components/PagedVideoGrid'
 import TabBar from '../components/TabBar'
-import ActionMenu from '../components/ActionMenu'
 
 const TABS = [
   { id: 'home', label: 'Home' },
@@ -56,8 +56,6 @@ export default function HomePage() {
     }
   })
 
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [menuVideoId, setMenuVideoId] = useState<string | null>(null)
   const [watchedIds, setWatchedIds] = useState(() => getWatchedSet())
 
   const activeTabRef = useRef(activeTab)
@@ -244,77 +242,39 @@ export default function HomePage() {
     })
   }, [])
 
-  const goToVideo = useCallback(() => {
-    const activeEl = document.activeElement
-    const link = activeEl?.closest('a[data-video-id]') as HTMLElement | null
-    if (link) {
-      saveNavState()
-      link.click()
-    }
-  }, [saveNavState])
-
-  const goToChannel = useCallback(() => {
-    const activeEl = document.activeElement
-    const videoCard = activeEl?.closest('[data-video-id]')
-    const channelId = videoCard?.getAttribute('data-channel-id')
-    if (channelId) {
-      saveNavState()
-      navigate(`/channel/${channelId}`)
-    }
-  }, [navigate, saveNavState])
-
-  const openModeMenu = useCallback(() => {
-    const videoId = (document.activeElement?.closest('[data-video-id]') as HTMLElement | null)
-      ?.getAttribute('data-video-id')
-    if (!videoId) return
-    setMenuVideoId(videoId)
-    setMenuOpen(true)
+  const getExtraItems = useCallback((): ActionMenuItem[] => {
+    if (activeTabRef.current !== 'history') return []
+    return [
+      { id: 'remove', label: 'Remove from history' },
+      { id: 'clear', label: 'Clear all history', danger: true },
+    ]
   }, [])
 
-  const handleMenuAction = useCallback((actionId: string) => {
-    if (actionId === 'mark-watched' && menuVideoId) {
-      markWatched(menuVideoId)
-    } else if (actionId === 'mark-unwatched' && menuVideoId) {
-      markUnwatched(menuVideoId)
-    } else if (actionId === 'remove' && menuVideoId) {
-      removeFromHistory(menuVideoId)
-    } else if (actionId === 'clear') {
-      clearHistory()
-    }
-    setMenuOpen(false)
-    setMenuVideoId(null)
+  const onExtraAction = useCallback((actionId: string, videoId: string) => {
+    if (actionId === 'remove' && videoId) removeFromHistory(videoId)
+    else if (actionId === 'clear') clearHistory()
+  }, [])
+
+  const onMenuChange = useCallback(() => {
     setWatchedIds(getWatchedSet())
     fetchHistory()
-    requestAnimationFrame(() => forceBootstrapNavFocus())
-  }, [menuVideoId, fetchHistory])
+  }, [fetchHistory])
+
+  const { actions, menuElement } = useVideoCardActions({
+    onNavigate: saveNavState,
+    getExtraItems,
+    onExtraAction,
+    onChange: onMenuChange,
+  })
 
   useEffect(() => {
-    const actions: Record<string, () => void> = {
-      select: goToVideo,
-      channel: goToChannel,
+    registerActions({
+      ...actions,
       prevTab: () => cycleTab(-1),
       nextTab: () => cycleTab(1),
-      mode: openModeMenu,
-    }
-    registerActions(actions)
+    })
     return () => unregisterActions()
-  }, [registerActions, unregisterActions, goToVideo, goToChannel, cycleTab, openModeMenu])
-
-  const menuItems = useMemo(() => {
-    const videoWatched = menuVideoId ? isWatched(menuVideoId) : false
-    if (activeTab === 'history') {
-      return [
-        videoWatched
-          ? { id: 'mark-unwatched', label: 'Mark as unwatched' }
-          : { id: 'mark-watched', label: 'Mark as watched' },
-        { id: 'remove', label: 'Remove from history' },
-        { id: 'clear', label: 'Clear all history', danger: true },
-      ]
-    }
-    return [
-      { id: 'mark-watched', label: 'Mark as watched' },
-    ]
-  }, [activeTab, menuVideoId])
+  }, [registerActions, unregisterActions, actions, cycleTab])
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -377,12 +337,7 @@ export default function HomePage() {
         />
       )}
 
-      <ActionMenu
-        open={menuOpen}
-        onClose={() => { setMenuOpen(false); setMenuVideoId(null) }}
-        items={menuItems}
-        onSelect={handleMenuAction}
-      />
+      {menuElement}
     </div>
   )
 }
