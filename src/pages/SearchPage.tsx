@@ -1,15 +1,16 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { search, searchContinuation, type YouTubeSearchResult } from '../lib/youtube'
 import { useInputContext } from '../contexts/InputContext'
+import { useVideoCardActions } from '../hooks/useVideoCardActions'
 import PagedVideoGrid from '../components/PagedVideoGrid'
 import TabBar from '../components/TabBar'
 
 export default function SearchPage() {
   const [searchParams] = useSearchParams()
   const query = searchParams.get('q') || ''
-  const navigate = useNavigate()
   const { registerActions, unregisterActions } = useInputContext()
+  const { actions, menuElement } = useVideoCardActions()
 
   const [results, setResults] = useState<YouTubeSearchResult[]>([])
   const [loading, setLoading] = useState(false)
@@ -51,30 +52,10 @@ export default function SearchPage() {
     }
   }, [continuation])
 
-  const goToVideo = useCallback(() => {
-    const activeEl = document.activeElement
-    const link = activeEl?.closest('a[data-video-id]') as HTMLElement | null
-    if (link) {
-      link.click()
-    }
-  }, [])
-
-  const goToChannel = useCallback(() => {
-    const activeEl = document.activeElement
-    const videoCard = activeEl?.closest('[data-video-id]')
-    const channelId = videoCard?.getAttribute('data-channel-id')
-    if (channelId) {
-      navigate(`/channel/${channelId}`)
-    }
-  }, [navigate])
-
   useEffect(() => {
-    registerActions({
-      select: goToVideo,
-      channel: goToChannel,
-    })
+    registerActions(actions)
     return () => unregisterActions()
-  }, [registerActions, unregisterActions, goToVideo, goToChannel])
+  }, [registerActions, unregisterActions, actions])
 
   const tabs = useMemo(() => [{ id: 'results', label: `Results for "${query}"` }], [query])
 
@@ -89,8 +70,11 @@ export default function SearchPage() {
         error={error}
         continuation={continuation}
         onLoadMore={loadMore}
+        showWatchedBadge
         emptyMessage="No results found."
       />
+
+      {menuElement}
     </div>
   )
 }

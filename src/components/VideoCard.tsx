@@ -4,6 +4,7 @@ import { formatDuration, formatViews, getThumbnailUrl } from '../lib/format'
 import { recordHistory } from '../lib/historyStore'
 import { getPlaybackPosition } from '../lib/playbackStore'
 import { isWatched } from '../lib/watchedStore'
+import { getFeedback } from '../lib/feedbackStore'
 
 interface VideoCardProps {
   video: YouTubeVideo
@@ -16,12 +17,14 @@ export default function VideoCard({ video, showChannel = true, showDuration = tr
   const position = getPlaybackPosition(video.videoId)
   const progress = position && video.duration ? position / video.duration : 0
   const watched = showWatchedBadge && isWatched(video.videoId)
+  const feedback = getFeedback(video.videoId)
 
   return (
     <Link
       to={`/watch/${video.videoId}`}
       data-video-id={video.videoId}
       data-channel-id={video.channelId}
+      data-channel-name={video.channelName}
       className={`group cursor-pointer flex flex-col gap-1 outline-none focus:outline-none focus:ring-2 focus:ring-red-500 rounded-2xl min-h-0${watched ? ' opacity-60' : ''}`}
       onClick={() => recordHistory(video, 0, video.duration || 0)}
     >
@@ -41,6 +44,19 @@ export default function VideoCard({ video, showChannel = true, showDuration = tr
               <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clipRule="evenodd" />
             </svg>
             Watched
+          </div>
+        )}
+        {feedback && (
+          <div className="absolute top-2 right-2 rounded-full bg-black/80 p-1.5 backdrop-blur-sm">
+            {feedback === 'like' ? (
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-green-400">
+                <path d="M10 3l5 6h-3v8H8V9H5z" />
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-red-400">
+                <path d="M10 17l5-6h-3V3H8v8H5z" />
+              </svg>
+            )}
           </div>
         )}
         {showDuration && video.duration && video.duration > 0 && (

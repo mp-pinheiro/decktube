@@ -25,6 +25,8 @@ const SEEK_TIERS = [
   { holdMs: 0, seekSec: 10 },
 ]
 
+const MAX_LOAD_RETRIES = 3
+
 function buildQualityOptions(representations: Representation[]): QualityOption[] {
   const sorted = [...representations].sort((a, b) => b.height - a.height)
   const options: QualityOption[] = [{ label: 'Auto', value: 'auto' }]
@@ -65,8 +67,12 @@ export default function WatchPage() {
   const [paused, setPaused] = useState(true)
   const initTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const midPlaybackErrorRef = useRef(false)
-  const initRetryRef = useRef(false)
+  const loadSeqRef = useRef(0)
+  const loadRetryRef = useRef(0)
+  const reloadInFlightRef = useRef(false)
+  const reloadRef = useRef<(resumeTime?: number) => void>(() => {})
+  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const retryButtonRef = useRef<HTMLButtonElement>(null)
 
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [playAction, setPlayAction] = useState(0)
@@ -94,6 +100,10 @@ export default function WatchPage() {
   useEffect(() => { nextVideoRef.current = nextVideo }, [nextVideo])
 
   const destroyDash = useCallback(() => {
+    if (reloadTimerRef.current) {
+      clearTimeout(reloadTimerRef.current)
+      reloadTimerRef.current = null
+    }
     if (initTimerRef.current) {
       clearTimeout(initTimerRef.current)
       initTimerRef.current = null
@@ -109,8 +119,10 @@ export default function WatchPage() {
     }
   }, [])
 
-  const initDash = useCallback((url: string, vid: string) => {
+  const initDash = useCallback((url: string, vid: string, startTime = 0) => {
     if (!videoElRef.current) return
+
+    reloadInFlightRef.current = false
 
     const dp = MediaPlayer().create()
 
@@ -153,14 +165,19 @@ export default function WatchPage() {
         clearTimeout(initTimerRef.current)
         initTimerRef.current = null
       }
+      if (reloadTimerRef.current) {
+        clearTimeout(reloadTimerRef.current)
+        reloadTimerRef.current = null
+      }
       const reps = dp.getRepresentationsByType('video')
       const opts = reps?.length ? buildQualityOptions(reps) : []
       if (opts.length) setDashQualities(opts)
       dp.setVolume(volumeRef.current / 100)
-      const saved = getPlaybackPosition(vid)
+      const saved = startTime > 0 ? startTime : getPlaybackPosition(vid)
       if (saved !== null && videoElRef.current) {
         videoElRef.current.currentTime = saved
       }
+      reloadInFlightRef.current = false
       const pref = preferredQuality.current
       if (pref !== 'Auto') {
         const match = opts.find(q => q.label === pref)
@@ -175,134 +192,180 @@ export default function WatchPage() {
     })
 
     dp.on('error', (e: unknown) => {
+      if (dashPlayerRef.current !== dp) return
       console.error('dash.js error:', e)
-      if (!dp.isReady()) {
-        if (!initRetryRef.current && blobUrlRef.current) {
-          initRetryRef.current = true
-          try {
-            console.warn('dash.js init error, retrying attachSource')
-            dp.attachSource(blobUrlRef.current, 0)
-            return
-          } catch (retryErr) {
-            console.error('dash.js init retry failed:', retryErr)
-          }
-        }
-        if (initTimerRef.current) {
-          clearTimeout(initTimerRef.current)
-          initTimerRef.current = null
-        }
-        setError('Failed to load video stream')
-        setLoading(false)
-      } else if (!midPlaybackErrorRef.current) {
-        midPlaybackErrorRef.current = true
-        const currentTime = videoElRef.current?.currentTime ?? 0
-        const src = blobUrlRef.current
-        if (src && currentTime > 0) {
-          try {
-            console.warn('dash.js mid-playback error, attempting source reload at', currentTime)
-            dp.attachSource(src, currentTime)
-          } catch (attachErr) {
-            console.error('dash.js attachSource failed:', attachErr)
-            setError('Video stream lost')
-            setLoading(false)
-          }
-        } else {
-          setError('Failed to load video stream')
-          setLoading(false)
-        }
+      if (reloadInFlightRef.current) return
+      reloadInFlightRef.current = true
+      const resumeTime = dp.isReady() ? (videoElRef.current?.currentTime ?? 0) : 0
+      if (initTimerRef.current) {
+        clearTimeout(initTimerRef.current)
+        initTimerRef.current = null
       }
+      const errSeq = loadSeqRef.current
+      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current)
+      reloadTimerRef.current = setTimeout(() => {
+        reloadTimerRef.current = null
+        if (loadSeqRef.current !== errSeq) return
+        reloadRef.current(resumeTime)
+      }, 0)
     })
 
     dashPlayerRef.current = dp
     setDashPlayer(dp)
   }, [])
 
-  const initProgressive = useCallback((format: MuxedFormat, vid: string) => {
+  const initProgressive = useCallback((format: MuxedFormat, vid: string, startTime = 0) => {
     const video = videoElRef.current
     if (!video) return
+
+    reloadInFlightRef.current = false
 
     const proxyUrl = `/stream-proxy?url=${encodeURIComponent(format.url)}`
     video.src = proxyUrl
     video.volume = volumeRef.current / 100
 
+    const cleanup = () => {
+      video.removeEventListener('loadeddata', onLoadedData)
+      video.removeEventListener('error', onError)
+    }
     const onLoadedData = () => {
-      const saved = getPlaybackPosition(vid)
+      const saved = startTime > 0 ? startTime : getPlaybackPosition(vid)
       if (saved !== null) {
         video.currentTime = saved
       }
       video.play().catch(() => {})
       setError(null)
       setLoading(false)
-      video.removeEventListener('loadeddata', onLoadedData)
+      reloadInFlightRef.current = false
+      if (reloadTimerRef.current) {
+        clearTimeout(reloadTimerRef.current)
+        reloadTimerRef.current = null
+      }
+      cleanup()
+    }
+    const onError = () => {
+      cleanup()
+      if (reloadInFlightRef.current) return
+      reloadInFlightRef.current = true
+      const resumeTime = video.currentTime || 0
+      const errSeq = loadSeqRef.current
+      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current)
+      reloadTimerRef.current = setTimeout(() => {
+        reloadTimerRef.current = null
+        if (loadSeqRef.current !== errSeq) return
+        reloadRef.current(resumeTime)
+      }, 0)
     }
     video.addEventListener('loadeddata', onLoadedData)
+    video.addEventListener('error', onError)
     video.load()
   }, [])
+
+  const loadVideo = useCallback(async (vid: string, resumeTime = 0) => {
+    const seq = ++loadSeqRef.current
+
+    getVideoDetails(vid).then(details => {
+      if (seq === loadSeqRef.current) setVideoData(details)
+    }).catch(() => {})
+    getSegments(vid).then(sbSegments => {
+      if (seq !== loadSeqRef.current) return
+      setSponsorSegments(sbSegments)
+      sbSegmentsRef.current = sbSegments
+    }).catch(() => {})
+    lastSkippedRef.current = null
+
+    let playerData
+    try {
+      playerData = await getPlayerData(vid)
+    } catch (err) {
+      if (seq !== loadSeqRef.current) return
+      reloadInFlightRef.current = false
+      console.error('Failed to load video:', err)
+      setError(err instanceof Error ? err.message : 'Failed to load video data')
+      setLoading(false)
+      return
+    }
+
+    if (seq !== loadSeqRef.current) return
+
+    const { mpd: mpdXml, representationCount } = generateMpd(playerData.adaptiveFormats)
+
+    if (representationCount > 0) {
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current)
+        blobUrlRef.current = null
+      }
+      const blob = new Blob([mpdXml], { type: 'application/dash+xml' })
+      const blobUrl = URL.createObjectURL(blob)
+      blobUrlRef.current = blobUrl
+      initDash(blobUrl, vid, resumeTime)
+      return
+    }
+
+    // DASH formats lack byte ranges -- fall back to muxed progressive stream
+    if (playerData.muxedFormats.length > 0) {
+      const best = playerData.muxedFormats.reduce((a, b) => a.bitrate > b.bitrate ? a : b)
+      console.warn('DASH unavailable, using progressive fallback:', best.qualityLabel || best.itag)
+      initProgressive(best, vid, resumeTime)
+      return
+    }
+
+    reloadInFlightRef.current = false
+    setError('No playable streams found')
+    setLoading(false)
+  }, [initDash, initProgressive])
+
+  const reload = useCallback((resumeTime = 0) => {
+    if (!videoId) return
+    if (loadRetryRef.current >= MAX_LOAD_RETRIES) {
+      reloadInFlightRef.current = false
+      setError('Stream failed. Press Retry to try again.')
+      setLoading(false)
+      return
+    }
+    loadRetryRef.current += 1
+    console.warn(`reloading player (attempt ${loadRetryRef.current}/${MAX_LOAD_RETRIES})`)
+    reloadInFlightRef.current = true
+    setError(null)
+    setLoading(true)
+    destroyDash()
+    loadVideo(videoId, resumeTime)
+  }, [videoId, destroyDash, loadVideo])
+
+  useEffect(() => {
+    reloadRef.current = reload
+  }, [reload])
+
+  const handleRetry = useCallback(() => {
+    loadRetryRef.current = 0
+    reload()
+  }, [reload])
+
+  useEffect(() => {
+    if (error && retryButtonRef.current) {
+      retryButtonRef.current.focus()
+    }
+  }, [error])
 
   useEffect(() => {
     if (!videoId) return
 
-    /* eslint-disable react-hooks/set-state-in-effect */
     setLoading(true)
     setError(null)
     setDashQualities([])
     setCurrentQuality('auto')
     setAutoPlayVisible(false)
     setSponsorSegments([])
-    /* eslint-enable react-hooks/set-state-in-effect */
     sbSegmentsRef.current = []
     lastSkippedRef.current = null
     destroyDash()
 
     cpnRef.current = generateCpn()
     playbackStartedRef.current = false
-    midPlaybackErrorRef.current = false
-    initRetryRef.current = false
+    loadRetryRef.current = 0
+    reloadInFlightRef.current = false
 
-    let cancelled = false
-    async function load() {
-      const [details, playerData, sbSegments] = await Promise.all([
-        getVideoDetails(videoId!),
-        getPlayerData(videoId!),
-        getSegments(videoId!),
-      ])
-
-      if (cancelled) return
-
-      setVideoData(details)
-      setSponsorSegments(sbSegments)
-      sbSegmentsRef.current = sbSegments
-      lastSkippedRef.current = null
-
-      const { mpd: mpdXml, representationCount } = generateMpd(playerData.adaptiveFormats)
-
-      if (representationCount > 0) {
-        const blob = new Blob([mpdXml], { type: 'application/dash+xml' })
-        const blobUrl = URL.createObjectURL(blob)
-        blobUrlRef.current = blobUrl
-        initDash(blobUrl, videoId!)
-        return
-      }
-
-      // DASH formats lack byte ranges -- fall back to muxed progressive stream
-      if (playerData.muxedFormats.length > 0) {
-        const best = playerData.muxedFormats.reduce((a, b) => a.bitrate > b.bitrate ? a : b)
-        console.warn('DASH unavailable, using progressive fallback:', best.qualityLabel || best.itag)
-        initProgressive(best, videoId!)
-        return
-      }
-
-      setError('No playable streams found')
-      setLoading(false)
-    }
-
-    load().catch((err) => {
-      if (!cancelled) {
-        console.error('Failed to load video:', err)
-        setError(err instanceof Error ? err.message : 'Failed to load video data')
-        setLoading(false)
-      }
-    })
+    loadVideo(videoId)
 
     const saveInterval = setInterval(() => {
       const video = videoElRef.current
@@ -336,7 +399,8 @@ export default function WatchPage() {
     }, 10000)
 
     return () => {
-      cancelled = true
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      loadSeqRef.current++
       clearInterval(saveInterval)
       clearInterval(watchtimeInterval)
       const video = videoElRef.current
@@ -347,12 +411,11 @@ export default function WatchPage() {
       }
       destroyDash()
     }
-  }, [videoId, destroyDash, initDash, initProgressive])
+  }, [videoId, destroyDash, loadVideo])
 
   useEffect(() => {
     if (!videoId) return
     let cancelled = false
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setNextVideo(null)
     getRelatedVideos(videoId).then(videos => {
       if (!cancelled && videos.length > 0) setNextVideo(videos[0])
@@ -688,7 +751,7 @@ export default function WatchPage() {
         tabIndex={0}
         className={`bg-black overflow-hidden relative focus:outline-none transition-shadow ${
           isFullscreen
-            ? 'w-full h-full cursor-none'
+            ? 'w-full h-full'
             : 'flex-1 min-h-0 rounded-2xl border border-white/5 focus:ring-4 focus:ring-red-600'
         }`}
       >
@@ -717,8 +780,15 @@ export default function WatchPage() {
           </div>
         )}
         {error && (
-          <div className="absolute inset-0 flex items-center justify-center text-red-400">
-            {error}
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-red-400">
+            <p className="max-w-md text-center px-4">{error}</p>
+            <button
+              ref={retryButtonRef}
+              onClick={handleRetry}
+              className="px-6 py-2 rounded-lg bg-red-600 text-white font-medium hover:bg-red-500 focus:outline-none focus:ring-4 focus:ring-red-400"
+            >
+              Retry
+            </button>
           </div>
         )}
         <QualitySelector

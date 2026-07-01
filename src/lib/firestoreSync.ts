@@ -5,6 +5,7 @@ import { getHistoryEntries, replaceHistoryEntries, type HistoryEntry } from './h
 import { getAllPositions, replaceAllPositions, type PositionsMap } from './playbackStore'
 import { getPreferences, replacePreferences, type UserPreferences } from './preferencesStore'
 import { getWatchedMap, replaceWatchedMap, type WatchedMap } from './watchedStore'
+import { getFeedbackMap, replaceFeedbackMap, type FeedbackMap } from './feedbackStore'
 import { syncLog } from './syncLog'
 
 const MAX_ENTRIES = 200
@@ -12,12 +13,14 @@ const HISTORY_DEBOUNCE_MS = 500
 const PLAYBACK_DEBOUNCE_MS = 30_000
 const PREFERENCES_DEBOUNCE_MS = 500
 const WATCHED_DEBOUNCE_MS = 500
+const FEEDBACK_DEBOUNCE_MS = 500
 const MAX_LISTENER_RETRIES = 5
 
 let historyTimer: ReturnType<typeof setTimeout> | null = null
 let playbackTimer: ReturnType<typeof setTimeout> | null = null
 let preferencesTimer: ReturnType<typeof setTimeout> | null = null
 let watchedTimer: ReturnType<typeof setTimeout> | null = null
+let feedbackTimer: ReturnType<typeof setTimeout> | null = null
 let isSyncing = false
 let syncStatus: 'idle' | 'syncing' | 'synced' | 'offline' | 'unauthenticated' = 'idle'
 let realtimeUnsub: Unsubscribe | null = null
@@ -27,7 +30,7 @@ let initialSyncDone = false
 let listenerRetryCount = 0
 
 interface PendingWrite {
-  type: 'history' | 'playback' | 'preferences' | 'watched'
+  type: 'history' | 'playback' | 'preferences' | 'watched' | 'feedback'
   data: unknown
   timestamp: number
 }
@@ -76,6 +79,7 @@ function startRealtimeListener(docRef: ReturnType<typeof doc>) {
       playback?: PositionsMap
       preferences?: UserPreferences
       watched?: WatchedMap
+      feedback?: FeedbackMap
       updatedAt?: number
     }
     const remoteUpdatedAt = data.updatedAt || 0
@@ -85,6 +89,7 @@ function startRealtimeListener(docRef: ReturnType<typeof doc>) {
     if (data.playback) replaceAllPositions(data.playback)
     if (data.preferences) replacePreferences(data.preferences)
     if (data.watched) replaceWatchedMap(data.watched)
+    if (data.feedback) replaceFeedbackMap(data.feedback)
     window.dispatchEvent(new Event('firestore-sync'))
     syncLog('info', 'realtime: update from other device', `history=${data.history?.length ?? 0} playback=${Object.keys(data.playback || {}).length} watched=${Object.keys(data.watched || {}).length}`)
   }, (err) => {
@@ -155,6 +160,17 @@ function mergeWatched(local: WatchedMap, remote: WatchedMap): WatchedMap {
   return merged
 }
 
+function mergeFeedback(local: FeedbackMap, remote: FeedbackMap): FeedbackMap {
+  const merged: FeedbackMap = { ...remote }
+  for (const [videoId, entry] of Object.entries(local)) {
+    const existing = merged[videoId]
+    if (!existing || entry.ts > existing.ts) {
+      merged[videoId] = entry
+    }
+  }
+  return merged
+}
+
 function mergePlayback(local: PositionsMap, remote: PositionsMap): PositionsMap {
   const merged: PositionsMap = { ...remote }
 
@@ -194,6 +210,7 @@ export async function initSync(): Promise<void> {
     const localPlayback = getAllPositions()
     const localPreferences = getPreferences()
     const localWatched = getWatchedMap()
+    const localFeedback = getFeedbackMap()
 
     if (snapshot.exists()) {
       const remote = snapshot.data() as {
@@ -201,6 +218,7 @@ export async function initSync(): Promise<void> {
         playback?: PositionsMap
         preferences?: UserPreferences
         watched?: WatchedMap
+        feedback?: FeedbackMap
         updatedAt?: number
       }
 
@@ -209,11 +227,13 @@ export async function initSync(): Promise<void> {
       const mergedPlayback = mergePlayback(localPlayback, remote.playback || {})
       const mergedPreferences = remote.preferences || localPreferences
       const mergedWatched = mergeWatched(localWatched, remote.watched || {})
+      const mergedFeedback = mergeFeedback(localFeedback, remote.feedback || {})
 
       replaceHistoryEntries(mergedHistory)
       replaceAllPositions(mergedPlayback)
       replacePreferences(mergedPreferences)
       replaceWatchedMap(mergedWatched)
+      replaceFeedbackMap(mergedFeedback)
 
       const now = Date.now()
       await setDoc(docRef, {
@@ -221,6 +241,7 @@ export async function initSync(): Promise<void> {
         playback: mergedPlayback,
         preferences: mergedPreferences,
         watched: mergedWatched,
+        feedback: mergedFeedback,
         updatedAt: now,
       })
       lastWrittenAt = now
@@ -233,6 +254,7 @@ export async function initSync(): Promise<void> {
         playback: localPlayback,
         preferences: localPreferences,
         watched: localWatched,
+        feedback: localFeedback,
         updatedAt: now,
       })
       lastWrittenAt = now
@@ -322,6 +344,26 @@ export function syncWatched(watched: WatchedMap): void {
       enqueue({ type: 'watched', data: watched, timestamp: Date.now() })
     }
   }, WATCHED_DEBOUNCE_MS)
+}
+
+export function syncFeedback(feedback: FeedbackMap): void {
+  if (feedbackTimer) clearTimeout(feedbackTimer)
+  if (!isFirebaseReady()) {
+    enqueue({ type: 'feedback', data: feedback, timestamp: Date.now() })
+    return
+  }
+  feedbackTimer = setTimeout(async () => {
+    const ref = getUserDocRef()
+    if (!ref) return
+    try {
+      const now = Date.now()
+      await setDoc(ref, { feedback, updatedAt: now }, { merge: true })
+      lastWrittenAt = now
+    } catch (err) {
+      syncLog('error', 'syncFeedback: failed', String(err))
+      enqueue({ type: 'feedback', data: feedback, timestamp: Date.now() })
+    }
+  }, FEEDBACK_DEBOUNCE_MS)
 }
 
 export function syncPreferences(preferences: UserPreferences): void {

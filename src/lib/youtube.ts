@@ -763,7 +763,7 @@ export interface PlayerData {
   muxedFormats: MuxedFormat[]
 }
 
-export async function getPlayerData(videoId: string): Promise<PlayerData> {
+export async function getPlayerData(videoId: string, timeoutMs = 15000): Promise<PlayerData> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'X-YouTube-Client-Name': '5',
@@ -779,11 +779,22 @@ export async function getPlayerData(videoId: string): Promise<PlayerData> {
     params: '2AMB',
   }
 
-  const response = await fetch('/youtubei/v1/player?prettyPrint=false', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  })
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  let response: Response
+  try {
+    response = await fetch('/youtubei/v1/player?prettyPrint=false', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+  } catch (err) {
+    if (controller.signal.aborted) throw new Error('Player request timed out')
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
 
   if (!response.ok) {
     const text = await response.text().catch(() => 'Unknown error')
