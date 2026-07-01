@@ -6,6 +6,7 @@ import VirtualKeyboard from './VirtualKeyboard'
 import InputLock from './InputLock'
 import { isAuthenticated } from '../lib/oauth'
 import { initSync } from '../lib/firestoreSync'
+import { useCursorAutoHide } from '../hooks/useCursorAutoHide'
 
 const LazyUpdateBanner = lazy(() => import('./UpdateBanner'))
 
@@ -20,6 +21,8 @@ class UpdateBannerErrorBoundary extends Component<
 
 export default function Layout() {
   const location = useLocation()
+
+  useCursorAutoHide()
 
   useEffect(() => {
     if (isAuthenticated()) {
