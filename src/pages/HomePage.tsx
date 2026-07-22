@@ -28,6 +28,14 @@ interface TabState {
   fetched: boolean
 }
 
+// Watched covers only finished (>=95%) videos; history covers everything the user
+// has started. Feeds hide both, since fresh recommendation computes already do.
+function seenVideoIds(): Set<string> {
+  const ids = getWatchedSet()
+  for (const v of getHistory()) ids.add(v.videoId)
+  return ids
+}
+
 function emptyTabState(): TabState {
   return { videos: [], loading: false, error: null, continuation: null, fetched: false }
 }
@@ -56,7 +64,7 @@ export default function HomePage() {
     }
   })
 
-  const [watchedIds, setWatchedIds] = useState(() => getWatchedSet())
+  const [seenIds, setSeenIds] = useState(seenVideoIds)
 
   const activeTabRef = useRef(activeTab)
   activeTabRef.current = activeTab
@@ -164,7 +172,7 @@ export default function HomePage() {
   useEffect(() => {
     const onSync = () => {
       fetchHistory()
-      setWatchedIds(getWatchedSet())
+      setSeenIds(seenVideoIds())
       // A fresh device fetches home recs before the initial sync merge lands,
       // producing an empty grid; refetch once merged history is available.
       const home = tabStatesRef.current.home
@@ -184,7 +192,7 @@ export default function HomePage() {
         subscriptions: emptyTabState(),
         history: emptyTabState(),
       })
-      setWatchedIds(getWatchedSet())
+      setSeenIds(seenVideoIds())
       pageIndexRef.current = {}
     }
     window.addEventListener('home-refresh', onRefresh)
@@ -273,7 +281,7 @@ export default function HomePage() {
   }, [])
 
   const onMenuChange = useCallback(() => {
-    setWatchedIds(getWatchedSet())
+    setSeenIds(seenVideoIds())
     fetchHistory()
   }, [fetchHistory])
 
@@ -300,7 +308,7 @@ export default function HomePage() {
       {activeTab === 'home' && (
         <PagedVideoGrid
           key="home"
-          videos={state.videos.filter(v => !watchedIds.has(v.videoId))}
+          videos={state.videos.filter(v => !seenIds.has(v.videoId))}
           loading={state.loading}
           error={state.error}
           continuation={null}
@@ -314,7 +322,7 @@ export default function HomePage() {
       {activeTab === 'recommended' && (
         <PagedVideoGrid
           key="recommended"
-          videos={state.videos.filter(v => !watchedIds.has(v.videoId))}
+          videos={state.videos.filter(v => !seenIds.has(v.videoId))}
           loading={state.loading}
           error={state.error}
           continuation={state.continuation}
@@ -328,7 +336,7 @@ export default function HomePage() {
       {activeTab === 'subscriptions' && (
         <PagedVideoGrid
           key="subscriptions"
-          videos={state.videos.filter(v => !watchedIds.has(v.videoId))}
+          videos={state.videos.filter(v => !seenIds.has(v.videoId))}
           loading={state.loading}
           error={state.error}
           continuation={state.continuation}
