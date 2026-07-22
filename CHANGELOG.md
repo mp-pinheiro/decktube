@@ -5,11 +5,12 @@ All notable changes to DeckTube. Generated from conventional commits by
 DeckTube follows [Semantic Versioning](https://semver.org).
 
 
-## [Unreleased]
+## [0.17.2] - 2026-07-22
 
 ### Chores
 
 - Adopt colocated jj workflow
+- Auto semver and changelog via git-cliff
 
 ## [0.17.1] - 2026-07-22
 
@@ -668,6 +669,7 @@ DeckTube follows [Semantic Versioning](https://semver.org).
 - Add version label next to sign out button
 - Version from package.json, add release workflow
 
+[0.17.2]: https://github.com/mp-pinheiro/decktube/compare/v0.17.1..v0.17.2
 [0.17.1]: https://github.com/mp-pinheiro/decktube/compare/v0.17.0..v0.17.1
 [0.17.0]: https://github.com/mp-pinheiro/decktube/compare/v0.16.3..v0.17.0
 [0.16.3]: https://github.com/mp-pinheiro/decktube/compare/v0.16.2..v0.16.3
