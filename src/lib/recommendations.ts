@@ -11,6 +11,7 @@ const MAX_SEEDS_PER_CHANNEL = 2
 const MAX_PER_CHANNEL = 3
 const RELEVANCE_WEIGHT = 3
 const RELATED_CONCURRENCY = 3
+const MAX_RECURRENCE_SEEDS = 3
 
 export async function getHistoryRecommendations(signal?: AbortSignal): Promise<YouTubeVideo[]> {
   const history = getHistory()
@@ -47,9 +48,13 @@ export async function getHistoryRecommendations(signal?: AbortSignal): Promise<Y
 
   const historyIds = new Set(history.map(v => v.videoId))
 
+  // Register both keys: history entries carry channelId, but related-rail
+  // candidates often only have a channel name to match on.
   const historyChannels = new Map<string, number>()
   for (const v of seedPool) {
-    if (v.channelId) historyChannels.set(v.channelId, (historyChannels.get(v.channelId) ?? 0) + 1)
+    for (const key of [v.channelId, v.channelName]) {
+      if (key) historyChannels.set(key, (historyChannels.get(key) ?? 0) + 1)
+    }
   }
 
   const profile = new Map<string, number>()
@@ -74,7 +79,7 @@ export async function getHistoryRecommendations(signal?: AbortSignal): Promise<Y
   await Promise.all(workers)
   if (signal?.aborted) return []
 
-  interface Candidate { video: YouTubeVideo; recurrence: number; relevance: number }
+  interface Candidate { video: YouTubeVideo; recurrence: number; seedHits: number; relevance: number }
   const candidates = new Map<string, Candidate>()
   related.forEach((videos, seedIndex) => {
     const weight = SEED_COUNT - seedIndex
@@ -86,13 +91,18 @@ export async function getHistoryRecommendations(signal?: AbortSignal): Promise<Y
 
       const existing = candidates.get(video.videoId)
       if (existing) {
-        existing.recurrence += weight
+        // Saturate at a few seeds' consensus: globally-trending clips (e.g. breaking
+        // news) recur across most rails and would otherwise out-score every niche pick.
+        if (existing.seedHits < MAX_RECURRENCE_SEEDS) {
+          existing.recurrence += weight
+          existing.seedHits++
+        }
       } else {
         // Title tokens only: matching a candidate's own channel name against the
         // profile would auto-boost every video from an already-watched channel.
         const relevance = [...new Set(tokenize(video.title))]
           .reduce((sum, t) => sum + (profile.get(t) ?? 0), 0)
-        candidates.set(video.videoId, { video, recurrence: weight, relevance })
+        candidates.set(video.videoId, { video, recurrence: weight, seedHits: 1, relevance })
       }
     }
   })
@@ -102,12 +112,13 @@ export async function getHistoryRecommendations(signal?: AbortSignal): Promise<Y
 
   const scored = list.map(c => {
     const ch = c.video.channelId
+    const chKey = ch || c.video.channelName
     const liked = !!ch && likedChannels.has(ch)
-    const familiar = !!ch && historyChannels.has(ch)
+    const familiar = !!chKey && historyChannels.has(chKey)
 
     let channelMult = 1
     if (liked) channelMult = 2 + Math.min(likedChannels.get(ch) ?? 0, 3)
-    else if (familiar) channelMult = 1 + Math.min((historyChannels.get(ch) ?? 0) * 0.5, 1.5)
+    else if (familiar) channelMult = 1 + Math.min((historyChannels.get(chKey) ?? 0) * 0.5, 1.5)
 
     const relevanceBoost = 1 + RELEVANCE_WEIGHT * (c.relevance / maxRelevance)
     const relevant = c.relevance > 0 || liked || familiar
@@ -117,27 +128,31 @@ export async function getHistoryRecommendations(signal?: AbortSignal): Promise<Y
   const gated = scored.filter(s => s.relevant)
   const ranked = (gated.length > 0 ? gated : scored).sort((a, b) => b.score - a.score)
 
-  // Round-robin across channels (ordered by best score) so one channel can't fill a page.
-  const buckets = new Map<string, YouTubeVideo[]>()
-  for (const { video } of ranked) {
-    const key = video.channelId || video.channelName || `video:${video.videoId}`
-    const bucket = buckets.get(key)
-    if (!bucket) {
-      buckets.set(key, [video])
-    } else if (bucket.length < MAX_PER_CHANNEL) {
-      bucket.push(video)
-    }
-  }
-
+  // Greedy pick with a per-channel repetition penalty. Strict round-robin let
+  // one-hit trending channels leapfrog the 2nd/3rd videos of channels the user
+  // actually watches; dividing by uses keeps pages diverse without that inversion.
+  const used = new Map<string, number>()
+  const pool = ranked.slice()
   const out: YouTubeVideo[] = []
-  for (let pass = 0, added = true; added; pass++) {
-    added = false
-    for (const bucket of buckets.values()) {
-      if (pass < bucket.length) {
-        out.push(bucket[pass])
-        added = true
+  while (pool.length > 0) {
+    let bestIdx = -1
+    let bestEff = 0
+    for (let i = 0; i < pool.length; i++) {
+      const { video, score } = pool[i]
+      const key = video.channelId || video.channelName || video.videoId
+      const uses = used.get(key) ?? 0
+      if (uses >= MAX_PER_CHANNEL) continue
+      const eff = score / (1 + uses)
+      if (eff > bestEff) {
+        bestEff = eff
+        bestIdx = i
       }
     }
+    if (bestIdx < 0) break
+    const { video } = pool.splice(bestIdx, 1)[0]
+    const key = video.channelId || video.channelName || video.videoId
+    used.set(key, (used.get(key) ?? 0) + 1)
+    out.push(video)
   }
   return out
 }
