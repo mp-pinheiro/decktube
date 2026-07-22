@@ -32,7 +32,9 @@ dist-ssr
 .gitconfig
 .gitmodules
 .ripgreprc
-.claude
+.claude/*
+!.claude/settings.json
+!.claude/hooks
 .mcp.json
 .vscode
 HEAD

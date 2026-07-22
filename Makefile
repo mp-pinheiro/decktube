@@ -57,11 +57,14 @@ _BUMP_TYPE := $(or $(filter major minor patch,$(MAKECMDGOALS)),patch)
 
 bump:
 	npm run build
-	npm version $(_BUMP_TYPE)
+	npm version $(_BUMP_TYPE) --no-git-tag-version
+	VER=$$(node -p "require('./package.json').version") && \
+	jj commit package.json package-lock.json -m "$$VER" && \
+	git tag -a "v$$VER" -m "DeckTube v$$VER" "$$(jj log -r @- --no-graph -T commit_id)"
 	npm run build:electron
 
 release: bump
-	git push && git push --tags
+	jj git push && git push origin --tags
 
 major minor patch:
 	@:

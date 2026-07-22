@@ -1,6 +1,9 @@
 # YOU MUST OBEY
 - DO NOT RUN `npm run dev` or similar. YOU ARE SANDBOXED. ASK TO RUN SERVER.
 
+# Version Control
+This repo is **jj-managed** (colocated jj+git, git HEAD detached on purpose). NEVER run mutating git commands (`commit`, `add`, `checkout`, `push`, ...) — commit with `jj commit -m "..."` (main auto-advances), push with `jj git push`, release with `make release`. Sole git exceptions (release only): `git tag` and `git push origin --tags`. See [VCS.md](./VCS.md) for the full workflow.
+
 # DeckTube
 
 A web app for watching YouTube videos on Steam Deck with controller/keyboard-friendly controls.
