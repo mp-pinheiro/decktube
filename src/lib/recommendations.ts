@@ -7,10 +7,12 @@ import { getFeedbackSignals } from './feedbackStore'
 import { tokenize } from './textTokens'
 
 const SEED_COUNT = 12
+const MAX_SEEDS_PER_CHANNEL = 2
 const MAX_PER_CHANNEL = 3
 const RELEVANCE_WEIGHT = 3
+const RELATED_CONCURRENCY = 3
 
-export async function getHistoryRecommendations(): Promise<YouTubeVideo[]> {
+export async function getHistoryRecommendations(signal?: AbortSignal): Promise<YouTubeVideo[]> {
   const history = getHistory()
   if (history.length === 0) return []
 
@@ -21,7 +23,27 @@ export async function getHistoryRecommendations(): Promise<YouTubeVideo[]> {
   const engaged = history.filter(v =>
     watched.has(v.videoId) || positions[v.videoId] || likedVideos.has(v.videoId))
   const seedPool = engaged.length >= 3 ? engaged : history
-  const seeds = seedPool.slice(0, SEED_COUNT)
+  // Cap seeds per channel so a binge session doesn't dominate the candidate pool,
+  // then backfill (at lowest weight) if there aren't enough diverse entries.
+  const seeds: YouTubeVideo[] = []
+  const overflow: YouTubeVideo[] = []
+  const seedChannels = new Map<string, number>()
+  for (const v of seedPool) {
+    if (seeds.length >= SEED_COUNT) break
+    // channelId is missing on some related-rail entries; fall back to name so caps still apply.
+    const key = v.channelId || v.channelName || ''
+    const count = key ? seedChannels.get(key) ?? 0 : 0
+    if (key && count >= MAX_SEEDS_PER_CHANNEL) {
+      overflow.push(v)
+      continue
+    }
+    if (key) seedChannels.set(key, count + 1)
+    seeds.push(v)
+  }
+  for (const v of overflow) {
+    if (seeds.length >= SEED_COUNT) break
+    seeds.push(v)
+  }
 
   const historyIds = new Set(history.map(v => v.videoId))
 
@@ -38,9 +60,19 @@ export async function getHistoryRecommendations(): Promise<YouTubeVideo[]> {
     }
   })
 
-  const related = await Promise.all(
-    seeds.map(seed => getRelatedVideos(seed.videoId, true).catch(() => [] as YouTubeVideo[]))
-  )
+  // Bounded concurrency: an unbounded burst monopolizes the browser's per-origin
+  // connection pool and starves navigation-critical requests (e.g. the player load
+  // when a video is clicked while these are still in flight).
+  const related: YouTubeVideo[][] = seeds.map(() => [])
+  let nextSeed = 0
+  const workers = Array.from({ length: Math.min(RELATED_CONCURRENCY, seeds.length) }, async () => {
+    while (nextSeed < seeds.length && !signal?.aborted) {
+      const i = nextSeed++
+      related[i] = await getRelatedVideos(seeds[i].videoId, true, signal)
+    }
+  })
+  await Promise.all(workers)
+  if (signal?.aborted) return []
 
   interface Candidate { video: YouTubeVideo; recurrence: number; relevance: number }
   const candidates = new Map<string, Candidate>()
@@ -56,7 +88,9 @@ export async function getHistoryRecommendations(): Promise<YouTubeVideo[]> {
       if (existing) {
         existing.recurrence += weight
       } else {
-        const relevance = [...new Set(tokenize(`${video.title} ${video.channelName}`))]
+        // Title tokens only: matching a candidate's own channel name against the
+        // profile would auto-boost every video from an already-watched channel.
+        const relevance = [...new Set(tokenize(video.title))]
           .reduce((sum, t) => sum + (profile.get(t) ?? 0), 0)
         candidates.set(video.videoId, { video, recurrence: weight, relevance })
       }
@@ -83,14 +117,27 @@ export async function getHistoryRecommendations(): Promise<YouTubeVideo[]> {
   const gated = scored.filter(s => s.relevant)
   const ranked = (gated.length > 0 ? gated : scored).sort((a, b) => b.score - a.score)
 
-  const perChannel = new Map<string, number>()
-  const out: YouTubeVideo[] = []
+  // Round-robin across channels (ordered by best score) so one channel can't fill a page.
+  const buckets = new Map<string, YouTubeVideo[]>()
   for (const { video } of ranked) {
-    const ch = video.channelId || ''
-    const count = perChannel.get(ch) ?? 0
-    if (ch && count >= MAX_PER_CHANNEL) continue
-    perChannel.set(ch, count + 1)
-    out.push(video)
+    const key = video.channelId || video.channelName || `video:${video.videoId}`
+    const bucket = buckets.get(key)
+    if (!bucket) {
+      buckets.set(key, [video])
+    } else if (bucket.length < MAX_PER_CHANNEL) {
+      bucket.push(video)
+    }
+  }
+
+  const out: YouTubeVideo[] = []
+  for (let pass = 0, added = true; added; pass++) {
+    added = false
+    for (const bucket of buckets.values()) {
+      if (pass < bucket.length) {
+        out.push(bucket[pass])
+        added = true
+      }
+    }
   }
   return out
 }

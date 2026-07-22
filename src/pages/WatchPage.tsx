@@ -99,6 +99,18 @@ export default function WatchPage() {
   const nextVideoRef = useRef<YouTubeVideo | null>(null)
   useEffect(() => { nextVideoRef.current = nextVideo }, [nextVideo])
 
+  const nextFetchedForRef = useRef<string | null>(null)
+  // Deferred until the stream is up: fetching "up next" at mount competes with the
+  // player-critical requests for the browser's per-origin connection pool.
+  const prefetchNextVideo = useCallback((vid: string) => {
+    if (nextFetchedForRef.current === vid) return
+    nextFetchedForRef.current = vid
+    getRelatedVideos(vid).then(videos => {
+      if (nextFetchedForRef.current !== vid) return
+      if (videos.length > 0) setNextVideo(videos[0])
+    })
+  }, [])
+
   const destroyDash = useCallback(() => {
     if (reloadTimerRef.current) {
       clearTimeout(reloadTimerRef.current)
@@ -148,18 +160,6 @@ export default function WatchPage() {
       },
     })
 
-    dp.initialize(videoElRef.current, url, true)
-
-    initTimerRef.current = setTimeout(() => {
-      if (!dp.isReady()) {
-        setError('Player initialization timed out')
-        setLoading(false)
-        dp.destroy()
-        dashPlayerRef.current = null
-        setDashPlayer(null)
-      }
-    }, 30000)
-
     dp.on('streamInitialized', () => {
       if (initTimerRef.current) {
         clearTimeout(initTimerRef.current)
@@ -189,6 +189,7 @@ export default function WatchPage() {
       }
       setError(null)
       setLoading(false)
+      prefetchNextVideo(vid)
     })
 
     dp.on('error', (e: unknown) => {
@@ -212,7 +213,20 @@ export default function WatchPage() {
 
     dashPlayerRef.current = dp
     setDashPlayer(dp)
-  }, [])
+
+    // Register handlers and refs before initialize() so no early dash event is missed.
+    dp.initialize(videoElRef.current, url, true)
+
+    initTimerRef.current = setTimeout(() => {
+      if (!dp.isReady()) {
+        setError('Player initialization timed out')
+        setLoading(false)
+        dp.destroy()
+        dashPlayerRef.current = null
+        setDashPlayer(null)
+      }
+    }, 30000)
+  }, [prefetchNextVideo])
 
   const initProgressive = useCallback((format: MuxedFormat, vid: string, startTime = 0) => {
     const video = videoElRef.current
@@ -236,6 +250,7 @@ export default function WatchPage() {
       video.play().catch(() => {})
       setError(null)
       setLoading(false)
+      prefetchNextVideo(vid)
       reloadInFlightRef.current = false
       if (reloadTimerRef.current) {
         clearTimeout(reloadTimerRef.current)
@@ -259,7 +274,7 @@ export default function WatchPage() {
     video.addEventListener('loadeddata', onLoadedData)
     video.addEventListener('error', onError)
     video.load()
-  }, [])
+  }, [prefetchNextVideo])
 
   const loadVideo = useCallback(async (vid: string, resumeTime = 0) => {
     const seq = ++loadSeqRef.current
@@ -355,6 +370,8 @@ export default function WatchPage() {
     setDashQualities([])
     setCurrentQuality('auto')
     setAutoPlayVisible(false)
+    setNextVideo(null)
+    nextFetchedForRef.current = null
     setSponsorSegments([])
     sbSegmentsRef.current = []
     lastSkippedRef.current = null
@@ -412,16 +429,6 @@ export default function WatchPage() {
       destroyDash()
     }
   }, [videoId, destroyDash, loadVideo])
-
-  useEffect(() => {
-    if (!videoId) return
-    let cancelled = false
-    setNextVideo(null)
-    getRelatedVideos(videoId).then(videos => {
-      if (!cancelled && videos.length > 0) setNextVideo(videos[0])
-    })
-    return () => { cancelled = true }
-  }, [videoId])
 
   useEffect(() => {
     const video = videoElRef.current

@@ -71,24 +71,35 @@ export default function HomePage() {
     }
   }, [navigate])
 
+  const homeAbortRef = useRef<AbortController | null>(null)
+
   const fetchHome = useCallback(async () => {
+    homeAbortRef.current?.abort()
+    const ac = new AbortController()
+    homeAbortRef.current = ac
     setTabStates(prev => ({
       ...prev,
       home: { ...prev.home, loading: true, error: null, fetched: true },
     }))
     try {
-      const videos = await getHistoryRecommendations()
+      const videos = await getHistoryRecommendations(ac.signal)
+      if (ac.signal.aborted) return
       setTabStates(prev => ({
         ...prev,
         home: { ...prev.home, videos, continuation: null, loading: false },
       }))
     } catch (err) {
+      if (ac.signal.aborted) return
       setTabStates(prev => ({
         ...prev,
         home: { ...prev.home, error: err instanceof Error ? err.message : 'Failed to load recommendations', loading: false },
       }))
     }
   }, [])
+
+  // Cancel in-flight recommendation fetches when leaving the page so they don't
+  // hold connection slots the watch page needs immediately after a click.
+  useEffect(() => () => homeAbortRef.current?.abort(), [])
 
   const fetchRecommended = useCallback(async () => {
     setTabStates(prev => ({
@@ -154,10 +165,16 @@ export default function HomePage() {
     const onSync = () => {
       fetchHistory()
       setWatchedIds(getWatchedSet())
+      // A fresh device fetches home recs before the initial sync merge lands,
+      // producing an empty grid; refetch once merged history is available.
+      const home = tabStatesRef.current.home
+      if (home.fetched && !home.loading && home.videos.length === 0 && getHistory().length > 0) {
+        fetchHome()
+      }
     }
     window.addEventListener('firestore-sync', onSync)
     return () => window.removeEventListener('firestore-sync', onSync)
-  }, [fetchHistory])
+  }, [fetchHistory, fetchHome])
 
   useEffect(() => {
     const onRefresh = () => {

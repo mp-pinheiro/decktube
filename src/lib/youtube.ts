@@ -532,7 +532,7 @@ function extractContinuationToken(data: unknown): string | null {
   return tokens.length > 0 ? tokens[tokens.length - 1] : null
 }
 
-async function youtubeiRequest<T>(endpoint: string, body: YouTubeiRequest, useTvClient = false, skipAuth = false): Promise<T> {
+async function youtubeiRequest<T>(endpoint: string, body: YouTubeiRequest, useTvClient = false, skipAuth = false, signal?: AbortSignal): Promise<T> {
   const token = skipAuth ? null : await getToken()
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -543,6 +543,7 @@ async function youtubeiRequest<T>(endpoint: string, body: YouTubeiRequest, useTv
   }
 
   const response = await fetch(`/youtubei/v1/${endpoint}?key=${API_KEY}`, {
+    signal,
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -692,17 +693,19 @@ export async function getVideoDetails(videoId: string): Promise<YouTubeVideo | n
 // When anonymous, the request omits the OAuth token so YouTube returns related videos anchored to
 // the source video's topic/co-visitation rather than the account-personalized "up next" rail (which
 // mirrors the home feed). History-based recommendations use the anonymous path for topical results.
-export async function getRelatedVideos(videoId: string, anonymous = false): Promise<YouTubeVideo[]> {
+export async function getRelatedVideos(videoId: string, anonymous = false, signal?: AbortSignal): Promise<YouTubeVideo[]> {
   try {
     const response = (await youtubeiRequest('next', {
       context: { client: TV_CLIENT_CONFIG },
       videoId,
-    }, true, anonymous)) as Record<string, unknown>
+    }, true, anonymous, signal)) as Record<string, unknown>
 
     const videos = extractVideosFromRenderers(response)
     return videos.filter(v => v.videoId !== videoId)
   } catch (error) {
-    console.error('Error fetching related videos:', error)
+    if ((error as { name?: string })?.name !== 'AbortError') {
+      console.error('Error fetching related videos:', error)
+    }
     return []
   }
 }
