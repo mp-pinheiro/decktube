@@ -6,7 +6,7 @@ STEAM_GAME_ID ?=
 
 GRID_DIR = /home/deck/.local/share/Steam/userdata/$(STEAM_USER_ID)/config/grid
 
-.PHONY: assets build bump release deploy deploy-art logs
+.PHONY: assets build next preview bump release deploy deploy-art logs
 
 assets:
 	rm -f steam-assets/*.png steam-assets/*.jpg
@@ -53,13 +53,26 @@ assets:
 build:
 	npm run build:electron
 
-_BUMP_TYPE := $(or $(filter major minor patch,$(MAKECMDGOALS)),patch)
+# Explicit `make bump major|minor|patch` overrides; bare `make bump` lets git-cliff
+# derive the next version from conventional commits since the last tag.
+_BUMP_TYPE := $(filter major minor patch,$(MAKECMDGOALS))
+
+next:
+	@git-cliff --bumped-version
+
+preview:
+	@git-cliff --unreleased --bump
 
 bump:
 	npm run build
-	npm version $(_BUMP_TYPE) --no-git-tag-version
+	if [ -n "$(_BUMP_TYPE)" ]; then \
+	  npm version $(_BUMP_TYPE) --no-git-tag-version; \
+	else \
+	  VER=$$(git-cliff --bumped-version) && npm version "$${VER#v}" --no-git-tag-version; \
+	fi
 	VER=$$(node -p "require('./package.json').version") && \
-	jj commit package.json package-lock.json -m "$$VER" && \
+	git-cliff --tag "v$$VER" -o CHANGELOG.md && \
+	jj commit package.json package-lock.json CHANGELOG.md -m "$$VER" && \
 	git tag -a "v$$VER" -m "DeckTube v$$VER" "$$(jj log -r @- --no-graph -T commit_id)"
 	npm run build:electron
 

@@ -95,22 +95,30 @@ Address review comments by adding a commit on top, then `jj tug` (or
 `jj bookmark set my-feature -r @-`) and `jj git push` again. Feature bookmarks are
 deliberately excluded from auto-advance.
 
-## Releases
+## Releases: auto semver + auto changelog
 
-Releases are driven by the Makefile, which is jj-native:
+Releases are **derived from conventional commits** by [git-cliff](https://git-cliff.org)
+(`cliff.toml`), driven by the Makefile. git-cliff is read-only over git history — and jj
+commits *are* real git commits — so it computes the next semver and regenerates
+`CHANGELOG.md` without touching jj; the version commit then goes through jj and the tag
+through git (colocated), exactly as the hook allows.
 
-```
-make bump            # patch (default): npm version --no-git-tag-version,
-                     #   jj commit of package.json+lock (subject = bare version),
-                     #   git tag vX.Y.Z on that commit, electron build
-make bump minor      # or major
-make release         # bump + jj git push + git push origin --tags
-```
+- `make next` prints the next version (feat bumps minor, fix/chore bump patch,
+  breaking bumps minor pre-1.0 — rules in `cliff.toml` `[bump]`).
+- `make preview` prints the pending release's changelog section.
+- `make bump` runs the release mechanics without publishing: web build, version from
+  git-cliff written by `npm version --no-git-tag-version` (or force a level with
+  `make bump major|minor|patch`), `CHANGELOG.md` regenerated, jj commit of
+  package.json + lockfile + changelog (subject = bare version, e.g. `0.17.2`),
+  annotated tag `vX.Y.Z` on that exact `@-` commit, electron build.
+- `make release` **publishes**: bump, then `jj git push` and `git push origin --tags`
+  (the documented git exceptions). The tag push triggers `.github/workflows/build.yml`,
+  which builds and publishes the AppImage to GitHub Releases for the autoupdater.
 
-`npm version` no longer touches git (`--no-git-tag-version`); the version commit goes
-through jj (so `main` auto-advances) and the annotated tag `vX.Y.Z` is created with plain
-`git tag` on the exact `@-` commit — the documented git exception, along with
-`git push origin --tags`.
+Preview with `make next` / `make preview` first; choosing to run `make release` is itself
+the sign-off. `CHANGELOG.md` is generated — never edit it by hand (that includes the
+`/commit` skill's changelog phase: skip it here); `make bump` rewrites the whole file
+from history. Flip `breaking_always_bump_major` to `true` in `cliff.toml` when you cut 1.0.
 
 ## Updating from origin (there is no `git pull`)
 
@@ -142,4 +150,6 @@ jj rebase -d main             # move your in-progress work onto the updated main
 | Operation log (time-travel) | `jj op log` |
 | Rewind repo to a past op | `jj op restore <op-id>` |
 | Amend an earlier commit | `jj edit <rev>` |
+| Next version (auto semver) | `make next` |
+| Preview pending changelog | `make preview` |
 | Cut a release | `make release` |
